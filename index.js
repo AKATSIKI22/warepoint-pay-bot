@@ -203,7 +203,7 @@ function generateConfirmationPdfBuffer(meta) {
 
       const doc = new PDFDocument({
         size: "A4",
-        margin: 50
+        margin: 32
       });
 
       const chunks = [];
@@ -214,63 +214,269 @@ function generateConfirmationPdfBuffer(meta) {
       doc.registerFont("regular", FONT_REGULAR);
       doc.registerFont("bold", FONT_BOLD);
 
-      const order = meta.order || "—";
-      const product = meta.product || "Товар";
-      const amount = formatAmount(meta.amount || "0");
+      const order = String(meta.order || "—");
+      const product = String(meta.product || "Товар");
+      const amountRaw = String(meta.amount || "0").replace(/[^\d]/g, "");
+      const amountNumber = Number(amountRaw || 0);
+      const amount = amountNumber.toLocaleString("ru-RU", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }) + " ₽";
+
       const date = new Date().toLocaleString("ru-RU");
 
-      doc.font("regular").fontSize(12).text(date);
-      doc.moveDown();
+      const pageWidth = doc.page.width;
+      const left = 32;
+      const right = pageWidth - 32;
+      const contentWidth = right - left;
 
-      doc.font("bold").fontSize(16).text("ООО «WAREPOINT»");
-      doc.font("regular").fontSize(11)
-        .text("ИНН 5012110688 / КПП 501201001")
-        .text("ОГРН 1235000092887")
-        .text("г. Москва");
+      function line(y) {
+        doc
+          .moveTo(left, y)
+          .lineTo(right, y)
+          .lineWidth(1)
+          .strokeColor("#555555")
+          .stroke();
+      }
 
-      doc.moveDown();
-      doc.text("------------------------------------------------");
-      doc.moveDown();
+      function stars(y) {
+        doc
+          .font("regular")
+          .fontSize(10)
+          .fillColor("#7a7a7a")
+          .text("* ".repeat(42), left, y, {
+            width: contentWidth,
+            align: "center"
+          });
+      }
 
-      doc.font("bold").fontSize(13).text(product);
-      doc.font("regular").fontSize(12).text("1 шт");
-      doc.moveDown();
+      // фон
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill("#efefef");
 
-      doc.text("Доставка: 0 ₽ (БЕСПЛАТНО)");
-      doc.moveDown();
+      // верхний мини-блок
+      doc
+        .font("bold")
+        .fontSize(17)
+        .fillColor("#111")
+        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, 18, {
+          width: contentWidth
+        });
 
-      doc.text(`Безналичный: ${amount}`);
-      doc.text("Платёж через СБП");
-      doc.moveDown();
+      doc
+        .font("regular")
+        .fontSize(11)
+        .fillColor("#111")
+        .text("ИНН: 7718912655", left, 42)
+        .text("ОГРН: 1127747210909", left, 58)
+        .text("КПП: 500101001", left, 74);
 
-      doc.text("------------------------------------------------");
-      doc.moveDown();
-
-      doc.font("bold").fontSize(14).text("СУММА");
-      doc.font("bold").fontSize(20).text(amount);
-      doc.moveDown();
-
-      doc.font("regular").fontSize(12).text("НДС: НЕТ");
-      doc.moveDown();
-
-      doc.text(`Заказ № ${order}`);
-      doc.moveDown();
-
-      doc.text("************************************************");
-      doc.moveDown();
-
-      doc.font("bold").fontSize(16).text(`ИТОГО: ${amount}`);
-      doc.moveDown(2);
-
+      // небольшой логотип сверху по центру, если есть печать
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          doc.image(STAMP_PATH, doc.page.width - 190, doc.y - 95, {
-            width: 130
+          doc.image(STAMP_PATH, pageWidth / 2 - 42, 120, {
+            fit: [84, 84],
+            align: "center",
+            valign: "center"
           });
-        } catch (err) {
-          console.error("STAMP ERROR:", err);
+        } catch (e) {
+          console.error("STAMP ERROR:", e);
         }
       }
+
+      // заголовок чека
+      line(188);
+
+      doc
+        .font("bold")
+        .fontSize(12)
+        .fillColor("#111")
+        .text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, 195, {
+          width: contentWidth
+        });
+
+      line(220);
+
+      doc
+        .font("bold")
+        .fontSize(11)
+        .text(date, left, 228, {
+          width: contentWidth,
+          align: "right"
+        });
+
+      // центральный блок компании
+      let y = 290;
+
+      doc
+        .font("regular")
+        .fontSize(11)
+        .fillColor("#111")
+        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, y, {
+          width: contentWidth,
+          align: "center"
+        });
+
+      y += 22;
+      doc.text("Офис: г. Москва", left, y, {
+        width: contentWidth,
+        align: "center"
+      });
+
+      y += 20;
+      doc
+        .fillColor("#1d4ed8")
+        .text("г. Москва", left, y, {
+          width: contentWidth,
+          align: "center"
+        });
+
+      y += 20;
+      doc
+        .fillColor("#111")
+        .text("ИНН 7718912655", left, y, {
+          width: contentWidth,
+          align: "center"
+        });
+
+      y += 48;
+      stars(y);
+
+      // товар
+      y += 42;
+      doc
+        .font("regular")
+        .fontSize(12)
+        .fillColor("#111")
+        .text(product, left + 142, y, {
+          width: 370,
+          align: "left"
+        });
+
+      doc
+        .text("1шт", right - 110, y + 10, {
+          width: 80,
+          align: "right"
+        });
+
+      y += 52;
+      doc
+        .font("bold")
+        .fontSize(13)
+        .text(amount, right - 150, y, {
+          width: 120,
+          align: "right"
+        });
+
+      y += 56;
+      stars(y);
+
+      // доставка
+      y += 38;
+      doc
+        .font("regular")
+        .fontSize(12)
+        .text("Доставка", left + 152, y);
+
+      doc
+        .text("0.00", right - 120, y, {
+          width: 80,
+          align: "right"
+        });
+
+      y += 28;
+      doc
+        .font("regular")
+        .fontSize(11)
+        .fillColor("#666")
+        .text("Бесплатно", right - 125, y, {
+          width: 85,
+          align: "right"
+        });
+
+      y += 26;
+      stars(y);
+
+      // безналичный / сбп
+      y += 38;
+      doc
+        .font("regular")
+        .fontSize(12)
+        .fillColor("#111")
+        .text("Безналичный", left + 152, y);
+
+      doc
+        .text(amount, right - 150, y, {
+          width: 120,
+          align: "right"
+        });
+
+      y += 24;
+      doc
+        .text("Платёж через СБП", left, y, {
+          width: contentWidth,
+          align: "center"
+        });
+
+      // сумма
+      y += 36;
+      doc
+        .font("bold")
+        .fontSize(12)
+        .text("Сума", left + 146, y);
+
+      doc
+        .text(amount, right - 150, y, {
+          width: 120,
+          align: "right"
+        });
+
+      // ндс
+      y += 34;
+      doc
+        .font("regular")
+        .fontSize(12)
+        .text("С НДС НЕТ", left + 146, y);
+
+      doc
+        .fillColor("#bcbcbc")
+        .text("0%", pageWidth / 2 - 8, y);
+
+      doc
+        .fillColor("#111")
+        .text("0", right - 72, y, {
+          width: 40,
+          align: "right"
+        });
+
+      // заказ
+      y += 34;
+      doc
+        .font("regular")
+        .fontSize(12)
+        .text(`Заказ №${order}`, left + 146, y);
+
+      y += 18;
+      stars(y);
+
+      // QR-заглушка или печать снизу
+      if (fs.existsSync(STAMP_PATH)) {
+        try {
+          doc.image(STAMP_PATH, pageWidth / 2 - 90, y + 34, {
+            fit: [180, 180],
+            align: "center",
+            valign: "center"
+          });
+        } catch (e) {
+          console.error("STAMP ERROR:", e);
+        }
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
 
       doc.moveDown(4);
       doc.font("regular").fontSize(10).text("Чек сформирован автоматически", { align: "center" });
