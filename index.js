@@ -23,13 +23,9 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedMime = [
-      "application/pdf",
-      "image/jpeg",
-      "image/png"
-    ];
-    const name = (file.originalname || "").toLowerCase();
+    const allowedMime = ["application/pdf", "image/jpeg", "image/png"];
     const allowedExt = [".pdf", ".jpg", ".jpeg", ".png"];
+    const name = (file.originalname || "").toLowerCase();
     const hasAllowedExt = allowedExt.some((ext) => name.endsWith(ext));
 
     if (allowedMime.includes(file.mimetype) || hasAllowedExt) {
@@ -89,9 +85,9 @@ function normalizeMinutes(value) {
 
 function getMainKeyboard() {
   return Markup.keyboard([
-    ["/newpay", "/mylinks"],
-    ["/repeat", "/cancel"],
-    ["/help"]
+    ["💸 Новый платеж", "📄 Мои ссылки"],
+    ["🔁 Повторить", "❌ Отмена"],
+    ["ℹ️ Помощь"]
   ]).resize();
 }
 
@@ -213,12 +209,7 @@ bot.start(async (ctx) => {
       `Привет 👋`,
       `Я бот для создания ссылок на оплату WarePoint.`,
       ``,
-      `Доступные команды:`,
-      `/newpay — создать новую ссылку`,
-      `/mylinks — показать последние ссылки`,
-      `/repeat — повторить последний заказ`,
-      `/cancel — отменить создание`,
-      `/help — помощь`
+      `Используй кнопки ниже.`
     ].join("\n"),
     getMainKeyboard()
   );
@@ -227,11 +218,11 @@ bot.start(async (ctx) => {
 bot.help(async (ctx) => {
   await ctx.reply(
     [
-      `Команды бота:`,
-      `/newpay — создать новую ссылку`,
-      `/mylinks — показать последние 10 ссылок`,
-      `/repeat — создать копию последнего заказа`,
-      `/cancel — отменить текущее создание`
+      `Что умеет бот:`,
+      `💸 Новый платеж — создать ссылку`,
+      `📄 Мои ссылки — показать последние ссылки`,
+      `🔁 Повторить — повторить последний заказ`,
+      `❌ Отмена — сбросить текущее создание`
     ].join("\n"),
     getMainKeyboard()
   );
@@ -298,6 +289,80 @@ bot.command("repeat", async (ctx) => {
   await finishCreation(ctx, getSession(ctx.from.id));
 });
 
+bot.hears("💸 Новый платеж", async (ctx) => {
+  setSession(ctx.from.id, {
+    stepIndex: 0,
+    data: {}
+  });
+
+  await ctx.reply("🚀 Начинаем создание новой ссылки.", getMainKeyboard());
+  await askNextStep(ctx, getSession(ctx.from.id));
+});
+
+bot.hears("📄 Мои ссылки", async (ctx) => {
+  const items = getHistory(ctx.from.id);
+
+  if (!items.length) {
+    await ctx.reply("Пока нет созданных ссылок.", getMainKeyboard());
+    return;
+  }
+
+  const text = items.map((item, index) => {
+    return [
+      `${index + 1}. Заказ #${item.order}`,
+      `Товар: ${item.product}`,
+      `Сумма: ${formatAmount(item.amount)}`,
+      `Ссылка: ${item.url}`
+    ].join("\n");
+  }).join("\n\n");
+
+  await ctx.reply(text, getMainKeyboard());
+});
+
+bot.hears("🔁 Повторить", async (ctx) => {
+  const items = getHistory(ctx.from.id);
+
+  if (!items.length) {
+    await ctx.reply("Нет предыдущих заказов для повтора.", getMainKeyboard());
+    return;
+  }
+
+  const last = items[0];
+
+  setSession(ctx.from.id, {
+    stepIndex: STEPS.length,
+    data: {
+      order: last.order,
+      product: last.product,
+      amount: last.amount,
+      card: last.card,
+      bank: last.bank,
+      recipient: last.recipient,
+      minutes: last.minutes
+    }
+  });
+
+  await finishCreation(ctx, getSession(ctx.from.id));
+});
+
+bot.hears("❌ Отмена", async (ctx) => {
+  clearSession(ctx.from.id);
+  await ctx.reply("❌ Создание ссылки отменено.", getMainKeyboard());
+});
+
+bot.hears("ℹ️ Помощь", async (ctx) => {
+  await ctx.reply(
+    [
+      `Используй кнопки ниже 👇`,
+      `💸 Новый платеж`,
+      `📄 Мои ссылки`,
+      `🔁 Повторить`,
+      `❌ Отмена`
+    ].join("\n"),
+    getMainKeyboard()
+  );
+});
+
 bot.action("cancel_create", async (ctx) => {
   clearSession(ctx.from.id);
   await ctx.answerCbQuery("Отменено");
@@ -357,12 +422,10 @@ bot.on("text", async (ctx) => {
   await askNextStep(ctx, session);
 });
 
-// healthcheck
 app.get("/", (req, res) => {
   res.status(200).send("Bot is running");
 });
 
-// прием чеков
 app.post("/send", upload.single("file"), async (req, res) => {
   try {
     if (!TG_CHAT_ID) {
@@ -410,19 +473,13 @@ app.post("/send", upload.single("file"), async (req, res) => {
       await bot.telegram.sendPhoto(
         TG_CHAT_ID,
         { source: req.file.buffer, filename: req.file.originalname },
-        {
-          caption,
-          parse_mode: "HTML"
-        }
+        { caption, parse_mode: "HTML" }
       );
     } else {
       await bot.telegram.sendDocument(
         TG_CHAT_ID,
         { source: req.file.buffer, filename: req.file.originalname },
-        {
-          caption,
-          parse_mode: "HTML"
-        }
+        { caption, parse_mode: "HTML" }
       );
     }
 
