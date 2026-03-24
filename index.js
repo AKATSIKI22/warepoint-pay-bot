@@ -160,14 +160,73 @@ bot.action(/no_(.+)/, async (ctx) => {
   await ctx.answerCbQuery("Отклонено ❌");
 });
 
-// ===== EXPRESS =====
 
-app.use(express.json());
+// ===== ЛОГИКА СОЗДАНИЯ ССЫЛКИ (ВСТАВИТЬ СЮДА) =====
 
-app.get("/", (req, res) => {
-  res.send("Bot is running");
+const sessions = new Map();
+
+const STEPS = [
+  { key: "order", label: "Введите номер заказа" },
+  { key: "product", label: "Введите название товара" },
+  { key: "amount", label: "Введите сумму к оплате" },
+  { key: "card", label: "Введите номер карты" },
+  { key: "bank", label: "Введите название банка" },
+  { key: "recipient", label: "Введите ФИО получателя" },
+  { key: "minutes", label: "Введите время таймера (минуты)" }
+];
+
+function getKeyboard() {
+  return Markup.keyboard([
+    ["💸 Новый платеж"]
+  ]).resize();
+}
+
+bot.start((ctx) => {
+  ctx.reply("Бот работает 🚀", getKeyboard());
 });
 
+bot.hears("💸 Новый платеж", async (ctx) => {
+  sessions.set(String(ctx.from.id), {
+    stepIndex: 0,
+    data: {}
+  });
+
+  await ctx.reply("Создаём ссылку...", getKeyboard());
+  await ctx.reply(STEPS[0].label);
+});
+
+bot.on("text", async (ctx) => {
+  const session = sessions.get(String(ctx.from.id));
+  if (!session) return;
+
+  const step = STEPS[session.stepIndex];
+  if (!step) return;
+
+  session.data[step.key] = ctx.message.text;
+  session.stepIndex++;
+
+  if (session.stepIndex >= STEPS.length) {
+    const d = session.data;
+
+    const url = `${process.env.BASE_PAYMENT_URL}?order=${d.order}&product=${d.product}&amount=${d.amount}&card=${d.card}&bank=${d.bank}&recipient=${d.recipient}&expires=${Date.now() + d.minutes * 60000}`;
+
+    await ctx.reply(
+      `✅ Ссылка создана\n\n${url}`,
+      Markup.inlineKeyboard([
+        [Markup.button.url("Открыть", url)]
+      ])
+    );
+
+    sessions.delete(String(ctx.from.id));
+    return;
+  }
+
+  await ctx.reply(STEPS[session.stepIndex].label);
+});
+
+
+// ===== EXPRESS =====
+app.use(express.json());
 // ===== WEBHOOK =====
 
 app.post("/bot", bot.webhookCallback("/bot"));
