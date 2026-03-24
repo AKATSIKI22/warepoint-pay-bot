@@ -1,4 +1,5 @@
 require("dotenv").config();
+
 const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
@@ -18,7 +19,10 @@ const ADMIN_IDS = (process.env.ADMIN_IDS || "")
 
 const TG_CHAT_ID = process.env.TG_CHAT_ID || "";
 const PORT = process.env.PORT || 3000;
+
 const STAMP_PATH = path.join(__dirname, "stamp.png");
+const FONT_REGULAR = path.join(__dirname, "DejaVuSans.ttf");
+const FONT_BOLD = path.join(__dirname, "DejaVuSans-Bold.ttf");
 
 const app = express();
 
@@ -213,12 +217,51 @@ function buildSummary(data, url) {
   ].join("\n");
 }
 
+function ensureFonts() {
+  if (!fs.existsSync(FONT_REGULAR)) {
+    throw new Error("Не найден файл DejaVuSans.ttf");
+  }
+  if (!fs.existsSync(FONT_BOLD)) {
+    throw new Error("Не найден файл DejaVuSans-Bold.ttf");
+  }
+}
+
+function drawField(doc, x, y, w, h, label, value) {
+  doc
+    .roundedRect(x, y, w, h, 16)
+    .fillColor("#F8FAFC")
+    .fill();
+
+  doc
+    .roundedRect(x, y, w, h, 16)
+    .lineWidth(1)
+    .strokeColor("#E2E8F0")
+    .stroke();
+
+  doc
+    .font("regular")
+    .fontSize(10)
+    .fillColor("#64748B")
+    .text(label, x + 16, y + 12, { width: w - 32 });
+
+  doc
+    .font("bold")
+    .fontSize(16)
+    .fillColor("#0F172A")
+    .text(String(value || "—"), x + 16, y + 28, {
+      width: w - 32,
+      ellipsis: true
+    });
+}
+
 function generateConfirmationPdfBuffer(meta) {
   return new Promise((resolve, reject) => {
     try {
+      ensureFonts();
+
       const doc = new PDFDocument({
         size: "A4",
-        margin: 50
+        margin: 0
       });
 
       const chunks = [];
@@ -226,84 +269,110 @@ function generateConfirmationPdfBuffer(meta) {
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
 
-      const pageWidth = doc.page.width;
-      const contentWidth = pageWidth - 100;
+      doc.registerFont("regular", FONT_REGULAR);
+      doc.registerFont("bold", FONT_BOLD);
 
-      doc.rect(30, 30, pageWidth - 60, doc.page.height - 60)
+      const pageWidth = doc.page.width;
+      const pageHeight = doc.page.height;
+
+      doc.rect(0, 0, pageWidth, pageHeight).fill("#EEF2F7");
+
+      doc
+        .roundedRect(36, 36, pageWidth - 72, pageHeight - 72, 26)
+        .fillColor("#FFFFFF")
+        .fill();
+
+      doc
+        .roundedRect(36, 36, pageWidth - 72, pageHeight - 72, 26)
         .lineWidth(1)
         .strokeColor("#D9E3F0")
         .stroke();
 
-      doc.font("Helvetica-Bold")
-        .fontSize(22)
+      doc
+        .font("bold")
+        .fontSize(28)
         .fillColor("#0B4A98")
-        .text("WAREPOINT", 50, 55, { align: "center" });
-
-      doc.moveTo(50, 90)
-        .lineTo(pageWidth - 50, 90)
-        .lineWidth(1)
-        .strokeColor("#C9D7E8")
-        .stroke();
-
-      doc.roundedRect(50, 110, contentWidth, 42, 10)
-        .fillColor("#EAF7EF")
-        .fill();
-
-      doc.fillColor("#0F7A38")
-        .font("Helvetica-Bold")
-        .fontSize(16)
-        .text("ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ОТ МАГАЗИНА", 50, 123, {
-          width: contentWidth,
+        .text("WAREPOINT", 36, 58, {
+          width: pageWidth - 72,
           align: "center"
         });
 
-      let y = 185;
+      doc
+        .moveTo(70, 105)
+        .lineTo(pageWidth - 70, 105)
+        .lineWidth(1)
+        .strokeColor("#D5DFEC")
+        .stroke();
 
-      const addRow = (label, value) => {
-        doc.font("Helvetica-Bold")
-          .fontSize(12)
-          .fillColor("#4A5B70")
-          .text(label, 60, y);
-
-        doc.font("Helvetica")
-          .fontSize(14)
-          .fillColor("#111827")
-          .text(String(value || "—"), 230, y);
-
-        y += 28;
-      };
-
-      addRow("Номер заказа:", `# ${meta.order || "—"}`);
-      addRow("Товар:", meta.product || "—");
-      addRow("Сумма:", formatAmount(meta.amount || "0"));
-      addRow("Банк:", meta.bank || "—");
-      addRow("Получатель:", meta.recipient || "—");
-      addRow("Дата подтверждения:", new Date().toLocaleString("ru-RU"));
-      addRow("ID подтверждения:", `WP-${new Date().getFullYear()}-${String(meta.order || "").padStart(6, "0")}`);
-
-      y += 20;
-
-      doc.roundedRect(50, y, contentWidth, 88, 14)
-        .fillColor("#F7FAFC")
+      doc
+        .roundedRect(70, 130, pageWidth - 140, 50, 16)
+        .fillColor("#EAF7EF")
         .fill();
 
-      doc.fillColor("#334155")
-        .font("Helvetica")
-        .fontSize(11)
+      doc
+        .font("bold")
+        .fontSize(18)
+        .fillColor("#0F8B4C")
+        .text("ПОДТВЕРЖДЕНИЕ ПОЛУЧЕНИЯ ОПЛАТЫ", 70, 146, {
+          width: pageWidth - 140,
+          align: "center"
+        });
+
+      const id = `WP-${new Date().getFullYear()}-${String(meta.order || "").padStart(6, "0")}`;
+      const amount = formatAmount(meta.amount || "0");
+      const dateText = new Date().toLocaleString("ru-RU");
+
+      let y = 215;
+      const left = 80;
+      const gap = 16;
+      const colWidth = (pageWidth - 160 - gap) / 2;
+
+      drawField(doc, left, y, colWidth, 72, "Номер заказа", `# ${meta.order || "—"}`);
+      drawField(doc, left + colWidth + gap, y, colWidth, 72, "ID подтверждения", id);
+
+      y += 88;
+      drawField(doc, left, y, pageWidth - 160, 72, "Товар", meta.product || "—");
+
+      y += 88;
+      drawField(doc, left, y, colWidth, 72, "Сумма", amount);
+      drawField(doc, left + colWidth + gap, y, colWidth, 72, "Дата подтверждения", dateText);
+
+      y += 88;
+      drawField(doc, left, y, colWidth, 72, "Банк", meta.bank || "—");
+      drawField(doc, left + colWidth + gap, y, colWidth, 72, "Получатель", meta.recipient || "—");
+
+      y += 104;
+
+      doc
+        .roundedRect(70, y, pageWidth - 140, 110, 18)
+        .fillColor("#F8FAFC")
+        .fill();
+
+      doc
+        .roundedRect(70, y, pageWidth - 140, 110, 18)
+        .lineWidth(1)
+        .strokeColor("#E2E8F0")
+        .stroke();
+
+      doc
+        .font("regular")
+        .fontSize(12)
+        .fillColor("#475569")
         .text(
           "Данный документ подтверждает, что магазин Warepoint получил оплату по указанному заказу. " +
-          "Этот PDF является подтверждением магазина и не является банковским или кассовым документом.",
-          66,
-          y + 18,
+          "Документ является подтверждением от магазина и не относится к банковским или кассовым документам.",
+          92,
+          y + 24,
           {
-            width: contentWidth - 32,
-            align: "left"
+            width: pageWidth - 184,
+            align: "left",
+            lineGap: 4
           }
         );
 
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          doc.image(STAMP_PATH, pageWidth - 255, y + 105, {
+          doc.image(STAMP_PATH, pageWidth - 260, pageHeight - 255, {
             fit: [180, 180],
             align: "center",
             valign: "center"
@@ -313,11 +382,12 @@ function generateConfirmationPdfBuffer(meta) {
         }
       }
 
-      doc.fillColor("#64748B")
-        .font("Helvetica")
+      doc
+        .font("regular")
         .fontSize(10)
-        .text("© Warepoint", 50, doc.page.height - 55, {
-          width: contentWidth,
+        .fillColor("#64748B")
+        .text("© Warepoint", 36, pageHeight - 42, {
+          width: pageWidth - 72,
           align: "center"
         });
 
@@ -466,12 +536,6 @@ function buildReceiptHtml(meta) {
     color:#64748b;
     font-size:12px;
     text-align:center;
-  }
-  @media (max-width: 640px){
-    .grid{ grid-template-columns:1fr; }
-    .title{ font-size:24px; }
-    .card{ padding:20px; border-radius:22px; }
-    .brand{ flex-direction:column; align-items:flex-start; }
   }
 </style>
 </head>
