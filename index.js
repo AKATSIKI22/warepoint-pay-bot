@@ -203,7 +203,7 @@ function generateConfirmationPdfBuffer(meta) {
 
       const doc = new PDFDocument({
         size: "A4",
-        margin: 32
+        margin: 28
       });
 
       const chunks = [];
@@ -214,31 +214,31 @@ function generateConfirmationPdfBuffer(meta) {
       doc.registerFont("regular", FONT_REGULAR);
       doc.registerFont("bold", FONT_BOLD);
 
+      const pageWidth = doc.page.width;
+      const left = 28;
+      const right = pageWidth - 28;
+      const contentWidth = right - left;
+
       const order = String(meta.order || "—");
       const product = String(meta.product || "Товар");
       const amount = formatAmountPdf(meta.amount || "0");
       const date = new Date().toLocaleString("ru-RU");
 
-      const pageWidth = doc.page.width;
-      const left = 32;
-      const right = pageWidth - 32;
-      const contentWidth = right - left;
-
-      function line(y) {
+      function hr(y) {
         doc
           .moveTo(left, y)
           .lineTo(right, y)
           .lineWidth(1)
-          .strokeColor("#555555")
+          .strokeColor("#666")
           .stroke();
       }
 
       function stars(y) {
         doc
           .font("regular")
-          .fontSize(10)
-          .fillColor("#7a7a7a")
-          .text("* ".repeat(42), left, y, {
+          .fontSize(9)
+          .fillColor("#8a8a8a")
+          .text("* ".repeat(40), left, y, {
             width: contentWidth,
             align: "center"
           });
@@ -246,28 +246,30 @@ function generateConfirmationPdfBuffer(meta) {
 
       doc.rect(0, 0, doc.page.width, doc.page.height).fill("#efefef");
 
-      // верхняя шапка
+      let y = 26;
+
+      // ШАПКА
       doc
         .font("bold")
-        .fontSize(17)
+        .fontSize(13)
         .fillColor("#111")
-        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, 18, {
+        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, y, {
           width: contentWidth
         });
 
+      y += 20;
       doc
         .font("regular")
-        .fontSize(11)
-        .fillColor("#111")
-        .text("ИНН: 7718912655", left, 42)
-        .text("ОГРН: 1127747210909", left, 58)
-        .text("КПП: 500101001", left, 74);
+        .fontSize(10.5)
+        .text("ИНН: 7718912655", left, y)
+        .text("ОГРН: 1127747210909", left, y + 16)
+        .text("КПП: 500101001", left, y + 32);
 
-      // печать сверху по центру
+      // Печать сверху маленькая и аккуратная
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          doc.image(STAMP_PATH, pageWidth / 2 - 42, 120, {
-            fit: [84, 84],
+          doc.image(STAMP_PATH, pageWidth - 118, 26, {
+            fit: [90, 90],
             align: "center",
             valign: "center"
           });
@@ -276,44 +278,48 @@ function generateConfirmationPdfBuffer(meta) {
         }
       }
 
-      line(188);
+      y = 122;
+      hr(y);
 
+      y += 10;
       doc
         .font("bold")
-        .fontSize(12)
-        .fillColor("#111")
-        .text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, 195, {
+        .fontSize(11.5)
+        .text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, y, {
           width: contentWidth
         });
 
-      line(220);
+      y += 24;
+      hr(y);
 
+      y += 10;
       doc
         .font("bold")
-        .fontSize(11)
-        .text(date, left, 228, {
+        .fontSize(10.5)
+        .text(date, left, y, {
           width: contentWidth,
           align: "right"
         });
 
-      let y = 290;
+      y += 38;
 
+      // ЦЕНТРАЛЬНЫЙ БЛОК
       doc
         .font("regular")
-        .fontSize(11)
+        .fontSize(10.5)
         .fillColor("#111")
         .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, y, {
           width: contentWidth,
           align: "center"
         });
 
-      y += 22;
+      y += 18;
       doc.text("Офис: г. Москва", left, y, {
         width: contentWidth,
         align: "center"
       });
 
-      y += 20;
+      y += 16;
       doc
         .fillColor("#1d4ed8")
         .text("г. Москва", left, y, {
@@ -321,7 +327,7 @@ function generateConfirmationPdfBuffer(meta) {
           align: "center"
         });
 
-      y += 20;
+      y += 16;
       doc
         .fillColor("#111")
         .text("ИНН 7718912655", left, y, {
@@ -329,124 +335,133 @@ function generateConfirmationPdfBuffer(meta) {
           align: "center"
         });
 
-      y += 48;
+      y += 26;
       stars(y);
 
-      y += 42;
+      // ТОВАР
+      y += 30;
       doc
         .font("regular")
-        .fontSize(12)
+        .fontSize(11)
         .fillColor("#111")
-        .text(product, left + 142, y, {
-          width: 370,
+        .text(product, left + 70, y, {
+          width: contentWidth - 150,
           align: "left"
         });
 
       doc
-        .text("1шт", right - 110, y + 10, {
-          width: 80,
+        .text("1шт", right - 55, y, {
+          width: 40,
           align: "right"
         });
 
-      y += 52;
+      y += 30;
       doc
         .font("bold")
-        .fontSize(13)
-        .text(amount, right - 150, y, {
-          width: 120,
+        .fontSize(12.5)
+        .text(amount, right - 130, y, {
+          width: 110,
           align: "right"
         });
 
-      y += 56;
+      y += 34;
       stars(y);
 
-      y += 38;
-      doc
-        .font("regular")
-        .fontSize(12)
-        .text("Доставка", left + 152, y);
-
-      doc
-        .text("0.00", right - 120, y, {
-          width: 80,
-          align: "right"
-        });
-
+      // ДОСТАВКА
       y += 28;
       doc
         .font("regular")
         .fontSize(11)
-        .fillColor("#666")
-        .text("Бесплатно", right - 125, y, {
-          width: 85,
+        .fillColor("#444")
+        .text("Доставка", left + 80, y);
+
+      doc
+        .text("0.00", right - 60, y, {
+          width: 40,
           align: "right"
         });
 
-      y += 26;
-      stars(y);
-
-      y += 38;
+      y += 18;
       doc
         .font("regular")
-        .fontSize(12)
-        .fillColor("#111")
-        .text("Безналичный", left + 152, y);
-
-      doc
-        .text(amount, right - 150, y, {
-          width: 120,
+        .fontSize(10.5)
+        .fillColor("#666")
+        .text("Бесплатно", right - 90, y, {
+          width: 70,
           align: "right"
         });
 
-      y += 24;
+      y += 22;
+      stars(y);
+
+      // БЕЗНАЛ
+      y += 28;
+      doc
+        .font("regular")
+        .fontSize(11)
+        .fillColor("#111")
+        .text("Безналичный", left + 80, y);
+
+      doc
+        .text(amount, right - 130, y, {
+          width: 110,
+          align: "right"
+        });
+
+      y += 18;
       doc
         .text("Платёж через СБП", left, y, {
           width: contentWidth,
           align: "center"
         });
 
-      y += 36;
+      // ИТОГ
+      y += 28;
       doc
         .font("bold")
-        .fontSize(12)
-        .text("Сума", left + 146, y);
+        .fontSize(11.5)
+        .text("Сума", left + 80, y);
 
       doc
-        .text(amount, right - 150, y, {
-          width: 120,
+        .text(amount, right - 130, y, {
+          width: 110,
           align: "right"
         });
 
-      y += 34;
+      y += 26;
       doc
         .font("regular")
-        .fontSize(12)
-        .text("С НДС НЕТ", left + 146, y);
+        .fontSize(11)
+        .text("С НДС НЕТ", left + 80, y);
 
       doc
-        .fillColor("#bcbcbc")
-        .text("0%", pageWidth / 2 - 8, y);
+        .fillColor("#bdbdbd")
+        .text("0%", pageWidth / 2 - 10, y, {
+          width: 30,
+          align: "center"
+        });
 
       doc
         .fillColor("#111")
-        .text("0", right - 72, y, {
-          width: 40,
+        .text("0", right - 35, y, {
+          width: 20,
           align: "right"
         });
 
-      y += 34;
+      y += 26;
       doc
         .font("regular")
-        .fontSize(12)
-        .text(`Заказ №${order}`, left + 146, y);
+        .fontSize(11)
+        .text(`Заказ №${order}`, left + 80, y);
 
-      y += 18;
+      y += 16;
       stars(y);
 
+      // Печать внизу одна, компактно
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          doc.image(STAMP_PATH, pageWidth / 2 - 90, y + 34, {
-            fit: [180, 180],
+          doc.image(STAMP_PATH, pageWidth / 2 - 52, y + 22, {
+            fit: [104, 104],
             align: "center",
             valign: "center"
           });
