@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
+const cors = require("cors");
 const { Telegraf, Markup } = require("telegraf");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -16,6 +17,13 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
+app.options("*", cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -23,7 +31,11 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedMime = ["application/pdf", "image/jpeg", "image/png"];
+    const allowedMime = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png"
+    ];
     const allowedExt = [".pdf", ".jpg", ".jpeg", ".png"];
     const name = (file.originalname || "").toLowerCase();
     const hasAllowedExt = allowedExt.some((ext) => name.endsWith(ext));
