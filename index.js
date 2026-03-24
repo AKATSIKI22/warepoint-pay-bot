@@ -14,7 +14,7 @@ const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.r
 const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onrender.com";
 const ADMIN_IDS = (process.env.ADMIN_IDS || "")
   .split(",")
-  .map(v => v.trim())
+  .map((v) => v.trim())
   .filter(Boolean);
 
 const TG_CHAT_ID = process.env.TG_CHAT_ID || "";
@@ -242,13 +242,15 @@ function drawField(doc, x, y, w, h, label, value) {
     .font("regular")
     .fontSize(10)
     .fillColor("#64748B")
-    .text(label, x + 16, y + 12, { width: w - 32 });
+    .text(label, x + 16, y + 12, {
+      width: w - 32
+    });
 
   doc
     .font("bold")
-    .fontSize(16)
-    .fillColor("#0F172A")
-    .text(String(value || "—"), x + 16, y + 28, {
+    .fontSize(15)
+    .fillColor("#111827")
+    .text(String(value || "—"), x + 16, y + 30, {
       width: w - 32,
       ellipsis: true
     });
@@ -275,105 +277,159 @@ function generateConfirmationPdfBuffer(meta) {
       const pageWidth = doc.page.width;
       const pageHeight = doc.page.height;
 
-      doc.rect(0, 0, pageWidth, pageHeight).fill("#EEF2F7");
+      // Фон страницы
+      doc.rect(0, 0, pageWidth, pageHeight).fill("#EEF3F8");
+
+      // Основная карточка
+      const cardX = 34;
+      const cardY = 34;
+      const cardW = pageWidth - 68;
+      const cardH = pageHeight - 68;
 
       doc
-        .roundedRect(36, 36, pageWidth - 72, pageHeight - 72, 26)
+        .roundedRect(cardX, cardY, cardW, cardH, 28)
         .fillColor("#FFFFFF")
         .fill();
 
       doc
-        .roundedRect(36, 36, pageWidth - 72, pageHeight - 72, 26)
+        .roundedRect(cardX, cardY, cardW, cardH, 28)
         .lineWidth(1)
-        .strokeColor("#D9E3F0")
+        .strokeColor("#D8E1EC")
         .stroke();
 
+      // Верхняя синяя полоса
+      doc
+        .roundedRect(cardX, cardY, cardW, 10, 28)
+        .fillColor("#0B4A98")
+        .fill();
+
+      // Логотип-текст
       doc
         .font("bold")
-        .fontSize(28)
+        .fontSize(30)
         .fillColor("#0B4A98")
-        .text("WAREPOINT", 36, 58, {
-          width: pageWidth - 72,
+        .text("WAREPOINT", 0, 68, {
+          width: pageWidth,
           align: "center"
         });
 
       doc
-        .moveTo(70, 105)
-        .lineTo(pageWidth - 70, 105)
+        .font("regular")
+        .fontSize(11)
+        .fillColor("#64748B")
+        .text("Интернет-магазин компьютерных комплектующих", 0, 104, {
+          width: pageWidth,
+          align: "center"
+        });
+
+      // Разделитель
+      doc
+        .moveTo(76, 132)
+        .lineTo(pageWidth - 76, 132)
         .lineWidth(1)
-        .strokeColor("#D5DFEC")
+        .strokeColor("#DCE6F1")
         .stroke();
 
+      // Зеленая плашка
       doc
-        .roundedRect(70, 130, pageWidth - 140, 50, 16)
-        .fillColor("#EAF7EF")
+        .roundedRect(76, 154, pageWidth - 152, 54, 18)
+        .fillColor("#EAF8EF")
         .fill();
 
       doc
+        .roundedRect(76, 154, pageWidth - 152, 54, 18)
+        .lineWidth(1)
+        .strokeColor("#CBE8D5")
+        .stroke();
+
+      doc
         .font("bold")
-        .fontSize(18)
-        .fillColor("#0F8B4C")
-        .text("ПОДТВЕРЖДЕНИЕ ПОЛУЧЕНИЯ ОПЛАТЫ", 70, 146, {
-          width: pageWidth - 140,
+        .fontSize(20)
+        .fillColor("#118548")
+        .text("✓ ОПЛАТА ПОДТВЕРЖДЕНА", 76, 171, {
+          width: pageWidth - 152,
           align: "center"
         });
 
-      const id = `WP-${new Date().getFullYear()}-${String(meta.order || "").padStart(6, "0")}`;
-      const amount = formatAmount(meta.amount || "0");
-      const dateText = new Date().toLocaleString("ru-RU");
-
-      let y = 215;
-      const left = 80;
-      const gap = 16;
-      const colWidth = (pageWidth - 160 - gap) / 2;
-
-      drawField(doc, left, y, colWidth, 72, "Номер заказа", `# ${meta.order || "—"}`);
-      drawField(doc, left + colWidth + gap, y, colWidth, 72, "ID подтверждения", id);
-
-      y += 88;
-      drawField(doc, left, y, pageWidth - 160, 72, "Товар", meta.product || "—");
-
-      y += 88;
-      drawField(doc, left, y, colWidth, 72, "Сумма", amount);
-      drawField(doc, left + colWidth + gap, y, colWidth, 72, "Дата подтверждения", dateText);
-
-      y += 88;
-      drawField(doc, left, y, colWidth, 72, "Банк", meta.bank || "—");
-      drawField(doc, left + colWidth + gap, y, colWidth, 72, "Получатель", meta.recipient || "—");
-
-      y += 104;
-
+      // Заголовок
       doc
-        .roundedRect(70, y, pageWidth - 140, 110, 18)
+        .font("bold")
+        .fontSize(18)
+        .fillColor("#1E293B")
+        .text("Подтверждение получения оплаты", 76, 235, {
+          width: pageWidth - 152,
+          align: "left"
+        });
+
+      const order = meta.order || "—";
+      const product = meta.product || "—";
+      const amount = formatAmount(meta.amount || "0");
+      const bank = meta.bank || "—";
+      const recipient = meta.recipient || "—";
+      const dateText = new Date().toLocaleString("ru-RU");
+      const confirmId = `WP-${new Date().getFullYear()}-${String(order).padStart(6, "0")}`;
+
+      const left = 76;
+      const gap = 16;
+      const fullW = pageWidth - 152;
+      const colW = (fullW - gap) / 2;
+
+      let y = 272;
+
+      drawField(doc, left, y, colW, 72, "Номер заказа", `# ${order}`);
+      drawField(doc, left + colW + gap, y, colW, 72, "ID подтверждения", confirmId);
+
+      y += 88;
+      drawField(doc, left, y, fullW, 72, "Товар", product);
+
+      y += 88;
+      drawField(doc, left, y, colW, 72, "Сумма", amount);
+      drawField(doc, left + colW + gap, y, colW, 72, "Дата подтверждения", dateText);
+
+      y += 88;
+      drawField(doc, left, y, colW, 72, "Банк", bank);
+      drawField(doc, left + colW + gap, y, colW, 72, "Получатель", recipient);
+
+      // Инфо-блок
+      y += 98;
+      doc
+        .roundedRect(76, y, fullW, 112, 18)
         .fillColor("#F8FAFC")
         .fill();
 
       doc
-        .roundedRect(70, y, pageWidth - 140, 110, 18)
+        .roundedRect(76, y, fullW, 112, 18)
         .lineWidth(1)
         .strokeColor("#E2E8F0")
         .stroke();
 
       doc
-        .font("regular")
+        .font("bold")
         .fontSize(12)
+        .fillColor("#334155")
+        .text("Информация", 96, y + 16);
+
+      doc
+        .font("regular")
+        .fontSize(11.5)
         .fillColor("#475569")
         .text(
           "Данный документ подтверждает, что магазин Warepoint получил оплату по указанному заказу. " +
           "Документ является подтверждением от магазина и не относится к банковским или кассовым документам.",
-          92,
-          y + 24,
+          96,
+          y + 38,
           {
-            width: pageWidth - 184,
+            width: fullW - 40,
             align: "left",
             lineGap: 4
           }
         );
 
+      // Печать/лого
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          doc.image(STAMP_PATH, pageWidth - 260, pageHeight - 255, {
-            fit: [180, 180],
+          doc.image(STAMP_PATH, pageWidth - 240, pageHeight - 235, {
+            fit: [150, 150],
             align: "center",
             valign: "center"
           });
@@ -382,12 +438,20 @@ function generateConfirmationPdfBuffer(meta) {
         }
       }
 
+      // Подвал
+      doc
+        .moveTo(76, pageHeight - 86)
+        .lineTo(pageWidth - 76, pageHeight - 86)
+        .lineWidth(1)
+        .strokeColor("#E2E8F0")
+        .stroke();
+
       doc
         .font("regular")
         .fontSize(10)
         .fillColor("#64748B")
-        .text("© Warepoint", 36, pageHeight - 42, {
-          width: pageWidth - 72,
+        .text("© Warepoint — подтверждение оплаты от магазина", 76, pageHeight - 72, {
+          width: pageWidth - 152,
           align: "center"
         });
 
@@ -575,12 +639,7 @@ function buildReceiptHtml(meta) {
           <div class="v">${escapeHtml(dateText)}</div>
         </div>
       </div>
-
-      <div class="note">
-        Данный документ подтверждает, что магазин <b>Warepoint</b> принял оплату по указанному заказу.
-        Это подтверждение магазина и не является банковским или кассовым документом.
-      </div>
-
+      
       <div class="footer">
         © Warepoint
       </div>
