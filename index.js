@@ -185,7 +185,9 @@ bot.action(/no_(.+)/, async (ctx) => {
 });
 
 // ===== ЗАПУСК =====
-bot.launch();
+bot.launch({
+  dropPendingUpdates: true
+});
 
 app.get("/", (req, res) => {
   res.send("Bot is running");
