@@ -170,7 +170,7 @@ app.get("/", (req, res) => {
 
 // ===== WEBHOOK =====
 
-app.use(bot.webhookCallback("/bot"));
+app.post("/bot", bot.webhookCallback("/bot"));
 
 (async () => {
   try {
