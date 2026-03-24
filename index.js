@@ -14,12 +14,8 @@ const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.r
 const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onrender.com";
 const PORT = Number(process.env.PORT || 3000);
 
-if (!BOT_TOKEN) {
-  throw new Error("Не задан BOT_TOKEN");
-}
-if (!TG_CHAT_ID) {
-  throw new Error("Не задан TG_CHAT_ID");
-}
+if (!BOT_TOKEN) throw new Error("Не задан BOT_TOKEN");
+if (!TG_CHAT_ID) throw new Error("Не задан TG_CHAT_ID");
 
 const bot = new Telegraf(BOT_TOKEN);
 const app = express();
@@ -28,7 +24,7 @@ const STAMP_PATH = path.join(__dirname, "stamp.png");
 const FONT_REGULAR = path.join(__dirname, "DejaVuSans.ttf");
 const FONT_BOLD = path.join(__dirname, "DejaVuSans-Bold.ttf");
 
-// -------------------- middlewares --------------------
+// -------------------- middleware --------------------
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
@@ -56,16 +52,10 @@ const upload = multer({
   }
 });
 
-// -------------------- storage in memory --------------------
-/**
- * ВНИМАНИЕ:
- * это хранение в памяти.
- * После перезапуска Render данные пропадут.
- * Для старта этого достаточно.
- */
-const sessions = new Map();   // создание новой ссылки
-const history = new Map();    // история по пользователю
-const orders = new Map();     // статусы/данные заказов
+// -------------------- memory storage --------------------
+const sessions = new Map();
+const history = new Map();
+const orders = new Map();
 
 const STEPS = [
   { key: "order", label: "Введите номер заказа", example: "Например: 5555" },
@@ -78,10 +68,27 @@ const STEPS = [
 ];
 
 // -------------------- utils --------------------
+function escapeHtml(str = "") {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function formatAmount(value) {
   const num = String(value || "").replace(/[^\d]/g, "");
   if (!num) return "0 ₽";
   return `${Number(num).toLocaleString("ru-RU")} ₽`;
+}
+
+function formatAmountPdf(value) {
+  const num = String(value || "").replace(/[^\d]/g, "");
+  const amount = Number(num || 0);
+  return amount.toLocaleString("ru-RU", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }) + " ₽";
 }
 
 function normalizeAmount(value) {
@@ -97,14 +104,6 @@ function normalizeMinutes(value) {
   if (!num || num < 1) return "15";
   if (num > 1440) return "1440";
   return String(num);
-}
-
-function escapeHtml(str = "") {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 function getMainKeyboard() {
@@ -196,6 +195,7 @@ function ensureFonts() {
   }
 }
 
+// -------------------- PDF --------------------
 function generateConfirmationPdfBuffer(meta) {
   return new Promise((resolve, reject) => {
     try {
@@ -216,13 +216,7 @@ function generateConfirmationPdfBuffer(meta) {
 
       const order = String(meta.order || "—");
       const product = String(meta.product || "Товар");
-      const amountRaw = String(meta.amount || "0").replace(/[^\d]/g, "");
-      const amountNumber = Number(amountRaw || 0);
-      const amount = amountNumber.toLocaleString("ru-RU", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }) + " ₽";
-
+      const amount = formatAmountPdf(meta.amount || "0");
       const date = new Date().toLocaleString("ru-RU");
 
       const pageWidth = doc.page.width;
@@ -250,10 +244,9 @@ function generateConfirmationPdfBuffer(meta) {
           });
       }
 
-      // фон
       doc.rect(0, 0, doc.page.width, doc.page.height).fill("#efefef");
 
-      // верхний мини-блок
+      // верхняя шапка
       doc
         .font("bold")
         .fontSize(17)
@@ -270,7 +263,7 @@ function generateConfirmationPdfBuffer(meta) {
         .text("ОГРН: 1127747210909", left, 58)
         .text("КПП: 500101001", left, 74);
 
-      // небольшой логотип сверху по центру, если есть печать
+      // печать сверху по центру
       if (fs.existsSync(STAMP_PATH)) {
         try {
           doc.image(STAMP_PATH, pageWidth / 2 - 42, 120, {
@@ -283,7 +276,6 @@ function generateConfirmationPdfBuffer(meta) {
         }
       }
 
-      // заголовок чека
       line(188);
 
       doc
@@ -304,7 +296,6 @@ function generateConfirmationPdfBuffer(meta) {
           align: "right"
         });
 
-      // центральный блок компании
       let y = 290;
 
       doc
@@ -341,7 +332,6 @@ function generateConfirmationPdfBuffer(meta) {
       y += 48;
       stars(y);
 
-      // товар
       y += 42;
       doc
         .font("regular")
@@ -370,7 +360,6 @@ function generateConfirmationPdfBuffer(meta) {
       y += 56;
       stars(y);
 
-      // доставка
       y += 38;
       doc
         .font("regular")
@@ -396,7 +385,6 @@ function generateConfirmationPdfBuffer(meta) {
       y += 26;
       stars(y);
 
-      // безналичный / сбп
       y += 38;
       doc
         .font("regular")
@@ -417,7 +405,6 @@ function generateConfirmationPdfBuffer(meta) {
           align: "center"
         });
 
-      // сумма
       y += 36;
       doc
         .font("bold")
@@ -430,7 +417,6 @@ function generateConfirmationPdfBuffer(meta) {
           align: "right"
         });
 
-      // ндс
       y += 34;
       doc
         .font("regular")
@@ -448,7 +434,6 @@ function generateConfirmationPdfBuffer(meta) {
           align: "right"
         });
 
-      // заказ
       y += 34;
       doc
         .font("regular")
@@ -458,7 +443,6 @@ function generateConfirmationPdfBuffer(meta) {
       y += 18;
       stars(y);
 
-      // QR-заглушка или печать снизу
       if (fs.existsSync(STAMP_PATH)) {
         try {
           doc.image(STAMP_PATH, pageWidth / 2 - 90, y + 34, {
@@ -478,17 +462,7 @@ function generateConfirmationPdfBuffer(meta) {
   });
 }
 
-      doc.moveDown(4);
-      doc.font("regular").fontSize(10).text("Чек сформирован автоматически", { align: "center" });
-      doc.font("regular").fontSize(10).text("ООО «WAREPOINT»", { align: "center" });
-
-      doc.end();
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
+// -------------------- receipt html --------------------
 function buildReceiptHtml(meta) {
   const order = meta.order || "—";
   const product = meta.product || "—";
@@ -502,66 +476,20 @@ function buildReceiptHtml(meta) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Подтверждение оплаты</title>
 <style>
-  body {
-    margin: 0;
-    background: #0b0f14;
-    font-family: Arial, sans-serif;
-    color: #fff;
-  }
-  .wrap {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    box-sizing: border-box;
-  }
-  .card {
-    width: 100%;
-    max-width: 720px;
-    background: linear-gradient(180deg, #111827 0%, #0b0f14 100%);
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 24px;
-    padding: 28px;
-    box-shadow: 0 30px 80px rgba(0,0,0,.45);
-  }
-  .title {
-    font-size: 30px;
-    font-weight: 800;
-    margin-bottom: 16px;
-  }
-  .badge {
-    display: inline-block;
-    padding: 10px 14px;
-    border-radius: 999px;
-    background: rgba(34,197,94,.14);
-    color: #bbf7d0;
-    border: 1px solid rgba(34,197,94,.25);
-    margin-bottom: 20px;
-    font-weight: 700;
-  }
-  .row {
-    padding: 14px 16px;
-    border-radius: 16px;
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.06);
-    margin-bottom: 12px;
-  }
-  .k {
-    color: #94a3b8;
-    font-size: 13px;
-    margin-bottom: 6px;
-  }
-  .v {
-    font-size: 18px;
-    font-weight: 700;
-  }
+  body{margin:0;background:#0b0f14;font-family:Arial,sans-serif;color:#fff}
+  .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+  .card{width:100%;max-width:720px;background:linear-gradient(180deg,#111827 0%,#0b0f14 100%);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:28px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  .title{font-size:30px;font-weight:800;margin-bottom:16px}
+  .badge{display:inline-block;padding:10px 14px;border-radius:999px;background:rgba(34,197,94,.14);color:#bbf7d0;border:1px solid rgba(34,197,94,.25);margin-bottom:20px;font-weight:700}
+  .row{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);margin-bottom:12px}
+  .k{color:#94a3b8;font-size:13px;margin-bottom:6px}
+  .v{font-size:18px;font-weight:700}
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="title">WAREPOINT</div>
+      <div class="title">ОМЕН</div>
       <div class="badge">✔ Оплата подтверждена</div>
 
       <div class="row">
@@ -589,7 +517,7 @@ function buildReceiptHtml(meta) {
 </html>`;
 }
 
-// -------------------- bot logic --------------------
+// -------------------- bot handlers --------------------
 async function askNextStep(ctx, session) {
   const step = STEPS[session.stepIndex];
   if (!step) return;
@@ -607,11 +535,7 @@ bot.start(async (ctx) => {
 });
 
 bot.command("newpay", async (ctx) => {
-  sessions.set(String(ctx.from.id), {
-    stepIndex: 0,
-    data: {}
-  });
-
+  sessions.set(String(ctx.from.id), { stepIndex: 0, data: {} });
   await ctx.reply("Начинаем создание новой ссылки.", getMainKeyboard());
   await askNextStep(ctx, sessions.get(String(ctx.from.id)));
 });
@@ -663,11 +587,7 @@ bot.command("cancel", async (ctx) => {
 });
 
 bot.hears("💸 Новый платеж", async (ctx) => {
-  sessions.set(String(ctx.from.id), {
-    stepIndex: 0,
-    data: {}
-  });
-
+  sessions.set(String(ctx.from.id), { stepIndex: 0, data: {} });
   await ctx.reply("Начинаем создание новой ссылки.", getMainKeyboard());
   await askNextStep(ctx, sessions.get(String(ctx.from.id)));
 });
@@ -921,7 +841,7 @@ bot.on("text", async (ctx) => {
   await askNextStep(ctx, session);
 });
 
-// -------------------- http routes --------------------
+// -------------------- routes --------------------
 app.get("/", (req, res) => {
   res.status(200).send("Bot is running");
 });
@@ -1085,7 +1005,6 @@ app.listen(PORT, async () => {
   console.log(`Server started on port ${PORT}`);
 
   try {
-    await bot.telegram.deleteWebhook();
     await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
     console.log(`Webhook set: ${APP_BASE_URL}/bot`);
   } catch (err) {
