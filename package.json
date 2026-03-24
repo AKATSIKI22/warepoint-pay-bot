@@ -1,7 +1,9 @@
 {
   "name": "warepoint-pay-bot",
   "version": "1.0.0",
+  "description": "Telegram bot for generating Warepoint payment links",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },

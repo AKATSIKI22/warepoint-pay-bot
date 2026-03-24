@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: warepoint-pay-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node index.js
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: BASE_PAYMENT_URL
+        value: https://warepoint.ru/pay
+      - key: ADMIN_IDS
+        sync: false
