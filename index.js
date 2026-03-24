@@ -51,6 +51,7 @@ const upload = multer({
 const sessions = new Map();
 const history = new Map();
 const paymentDecisions = new Map();
+const orderMeta = new Map();
 
 const STEPS = [
   { key: "order", label: "Введите номер заказа", example: "Например: 3452" },
@@ -140,6 +141,13 @@ function getHistory(userId) {
 }
 
 function buildPaymentUrl(data) {
+  const expiresAt = Date.now() + Number(normalizeMinutes(data.minutes)) * 60 * 1000;
+
+  orderMeta.set(String(data.order), {
+    status: "pending",
+    expiresAt
+  });
+
   const params = new URLSearchParams({
     order: data.order,
     product: data.product,
@@ -148,7 +156,7 @@ function buildPaymentUrl(data) {
     bank: data.bank,
     recipient: data.recipient,
     method: "Перевод на карту",
-    t: String(Number(normalizeMinutes(data.minutes)) * 60)
+    expires: String(expiresAt)
   });
 
   return `${BASE_PAYMENT_URL}?${params.toString()}`;
@@ -401,8 +409,14 @@ bot.action("newpay_again", async (ctx) => {
 
 bot.action(/^approve:(.+)$/, async (ctx) => {
   try {
-    const order = ctx.match[1];
+    const order = String(ctx.match[1]);
     paymentDecisions.set(order, "approved");
+
+    const current = orderMeta.get(order) || {};
+    orderMeta.set(order, {
+      ...current,
+      status: "approved"
+    });
 
     await ctx.answerCbQuery("Оплата подтверждена");
 
@@ -432,8 +446,14 @@ bot.action(/^approve:(.+)$/, async (ctx) => {
 
 bot.action(/^reject:(.+)$/, async (ctx) => {
   try {
-    const order = ctx.match[1];
+    const order = String(ctx.match[1]);
     paymentDecisions.set(order, "rejected");
+
+    const current = orderMeta.get(order) || {};
+    orderMeta.set(order, {
+      ...current,
+      status: "rejected"
+    });
 
     await ctx.answerCbQuery("Оплата отклонена");
 
@@ -507,6 +527,33 @@ app.get("/", (req, res) => {
   res.status(200).send("Bot is running");
 });
 
+app.get("/status", (req, res) => {
+  const order = String(req.query.order || "").trim();
+
+  if (!order) {
+    return res.status(400).json({
+      ok: false,
+      error: "Не передан номер заказа"
+    });
+  }
+
+  const meta = orderMeta.get(order);
+
+  if (!meta) {
+    return res.json({
+      ok: true,
+      status: "pending",
+      expiresAt: null
+    });
+  }
+
+  return res.json({
+    ok: true,
+    status: meta.status || "pending",
+    expiresAt: meta.expiresAt || null
+  });
+});
+
 app.post("/send", upload.single("file"), async (req, res) => {
   try {
     if (!TG_CHAT_ID) {
@@ -534,7 +581,7 @@ app.post("/send", upload.single("file"), async (req, res) => {
       comment = ""
     } = req.body || {};
 
-    const currentDecision = paymentDecisions.get(order) || "pending";
+    const currentDecision = paymentDecisions.get(String(order)) || "pending";
 
     let statusText = "🟡 <b>Статус:</b> Ожидает проверки";
     if (currentDecision === "approved") {
@@ -560,7 +607,7 @@ app.post("/send", upload.single("file"), async (req, res) => {
       statusText
     ].join("\n");
 
-    const keyboard = getReceiptDecisionKeyboard(order).reply_markup;
+    const keyboard = getReceiptDecisionKeyboard(String(order)).reply_markup;
     const isImage = (req.file.mimetype || "").startsWith("image/");
 
     if (isImage) {
