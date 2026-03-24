@@ -50,6 +50,7 @@ const upload = multer({
 
 const sessions = new Map();
 const history = new Map();
+const paymentDecisions = new Map();
 
 const STEPS = [
   { key: "order", label: "Введите номер заказа", example: "Например: 3452" },
@@ -101,6 +102,15 @@ function getMainKeyboard() {
     ["🔁 Повторить", "❌ Отмена"],
     ["ℹ️ Помощь"]
   ]).resize();
+}
+
+function getReceiptDecisionKeyboard(order) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("✅ Подтвердить", `approve:${order}`),
+      Markup.button.callback("❌ Отклонить", `reject:${order}`)
+    ]
+  ]);
 }
 
 function getSession(userId) {
@@ -234,15 +244,10 @@ bot.help(async (ctx) => {
       `💸 Новый платеж — создать ссылку`,
       `📄 Мои ссылки — показать последние ссылки`,
       `🔁 Повторить — повторить последний заказ`,
-      `❌ Отмена — сбросить текущее создание`
+      `❌ Отмена — отменить текущее создание`
     ].join("\n"),
     getMainKeyboard()
   );
-});
-
-bot.command("cancel", async (ctx) => {
-  clearSession(ctx.from.id);
-  await ctx.reply("❌ Создание ссылки отменено.", getMainKeyboard());
 });
 
 bot.command("newpay", async (ctx) => {
@@ -250,7 +255,6 @@ bot.command("newpay", async (ctx) => {
     stepIndex: 0,
     data: {}
   });
-
   await ctx.reply("🚀 Начинаем создание новой ссылки.", getMainKeyboard());
   await askNextStep(ctx, getSession(ctx.from.id));
 });
@@ -301,12 +305,16 @@ bot.command("repeat", async (ctx) => {
   await finishCreation(ctx, getSession(ctx.from.id));
 });
 
+bot.command("cancel", async (ctx) => {
+  clearSession(ctx.from.id);
+  await ctx.reply("❌ Создание ссылки отменено.", getMainKeyboard());
+});
+
 bot.hears("💸 Новый платеж", async (ctx) => {
   setSession(ctx.from.id, {
     stepIndex: 0,
     data: {}
   });
-
   await ctx.reply("🚀 Начинаем создание новой ссылки.", getMainKeyboard());
   await askNextStep(ctx, getSession(ctx.from.id));
 });
@@ -387,9 +395,70 @@ bot.action("newpay_again", async (ctx) => {
     stepIndex: 0,
     data: {}
   });
-
   await ctx.answerCbQuery("Начинаем заново");
   await askNextStep(ctx, getSession(ctx.from.id));
+});
+
+bot.action(/^approve:(.+)$/, async (ctx) => {
+  try {
+    const order = ctx.match[1];
+    paymentDecisions.set(order, "approved");
+
+    await ctx.answerCbQuery("Оплата подтверждена");
+
+    const originalText =
+      (ctx.update.callback_query.message.caption || ctx.update.callback_query.message.text || "").trim();
+
+    const newText = `${originalText}\n\n✅ <b>Статус:</b> Оплата подтверждена`;
+
+    if (ctx.update.callback_query.message.photo || ctx.update.callback_query.message.document) {
+      await ctx.editMessageCaption(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    } else {
+      await ctx.editMessageText(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    }
+
+    await ctx.reply(`✅ Заказ #${order} подтвержден.`);
+  } catch (err) {
+    console.error("APPROVE ERROR:", err);
+    await ctx.answerCbQuery("Ошибка");
+  }
+});
+
+bot.action(/^reject:(.+)$/, async (ctx) => {
+  try {
+    const order = ctx.match[1];
+    paymentDecisions.set(order, "rejected");
+
+    await ctx.answerCbQuery("Оплата отклонена");
+
+    const originalText =
+      (ctx.update.callback_query.message.caption || ctx.update.callback_query.message.text || "").trim();
+
+    const newText = `${originalText}\n\n❌ <b>Статус:</b> Оплата отклонена`;
+
+    if (ctx.update.callback_query.message.photo || ctx.update.callback_query.message.document) {
+      await ctx.editMessageCaption(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    } else {
+      await ctx.editMessageText(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    }
+
+    await ctx.reply(`❌ Заказ #${order} отклонен.`);
+  } catch (err) {
+    console.error("REJECT ERROR:", err);
+    await ctx.answerCbQuery("Ошибка");
+  }
 });
 
 bot.on("text", async (ctx) => {
@@ -465,6 +534,16 @@ app.post("/send", upload.single("file"), async (req, res) => {
       comment = ""
     } = req.body || {};
 
+    const currentDecision = paymentDecisions.get(order) || "pending";
+
+    let statusText = "🟡 <b>Статус:</b> Ожидает проверки";
+    if (currentDecision === "approved") {
+      statusText = "✅ <b>Статус:</b> Оплата подтверждена";
+    }
+    if (currentDecision === "rejected") {
+      statusText = "❌ <b>Статус:</b> Оплата отклонена";
+    }
+
     const caption = [
       "📥 <b>Новое подтверждение оплаты</b>",
       "",
@@ -476,22 +555,33 @@ app.post("/send", upload.single("file"), async (req, res) => {
       `💳 <b>Карта:</b> **** ${escapeHtml(card_last4 || "—")}`,
       `💸 <b>Метод:</b> ${escapeHtml(method || "—")}`,
       "",
-      `💬 <b>Комментарий:</b> ${escapeHtml(comment || "—")}`
+      `💬 <b>Комментарий:</b> ${escapeHtml(comment || "—")}`,
+      "",
+      statusText
     ].join("\n");
 
+    const keyboard = getReceiptDecisionKeyboard(order).reply_markup;
     const isImage = (req.file.mimetype || "").startsWith("image/");
 
     if (isImage) {
       await bot.telegram.sendPhoto(
         TG_CHAT_ID,
         { source: req.file.buffer, filename: req.file.originalname },
-        { caption, parse_mode: "HTML" }
+        {
+          caption,
+          parse_mode: "HTML",
+          reply_markup: keyboard
+        }
       );
     } else {
       await bot.telegram.sendDocument(
         TG_CHAT_ID,
         { source: req.file.buffer, filename: req.file.originalname },
-        { caption, parse_mode: "HTML" }
+        {
+          caption,
+          parse_mode: "HTML",
+          reply_markup: keyboard
+        }
       );
     }
 
