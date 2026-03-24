@@ -185,9 +185,24 @@ bot.action(/no_(.+)/, async (ctx) => {
 });
 
 // ===== ЗАПУСК =====
-bot.launch({
-  dropPendingUpdates: true
-});
+
+const WEBHOOK_URL = process.env.APP_BASE_URL;
+
+app.use(express.json());
+
+// webhook endpoint
+app.use(bot.webhookCallback("/bot"));
+
+// ставим webhook
+(async () => {
+  try {
+    await bot.telegram.deleteWebhook(); // очистка старого
+    await bot.telegram.setWebhook(`${WEBHOOK_URL}/bot`);
+    console.log("Webhook set:", `${WEBHOOK_URL}/bot`);
+  } catch (e) {
+    console.log("Webhook error:", e);
+  }
+})();
 
 app.get("/", (req, res) => {
   res.send("Bot is running");
