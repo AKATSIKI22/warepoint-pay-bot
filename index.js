@@ -448,26 +448,32 @@ function generateConfirmationPdfBuffer(meta) {
 
       // Нижняя печать — только одна
       if (fs.existsSync(STAMP_PATH)) {
-        try {
-          const stampSize = 120;
-          const stampX = pageWidth / 2 - stampSize / 2;
-          const stampY = y + 28;
+  try {
+    const stampSize = 160;
 
-          doc.save();
-          doc.opacity(0.88);
-          doc.rotate(-8, {
-            origin: [stampX + stampSize / 2, stampY + stampSize / 2]
-          });
-          doc.image(STAMP_PATH, stampX, stampY, {
-            fit: [stampSize, stampSize],
-            align: "center",
-            valign: "center"
-          });
-          doc.restore();
-        } catch (e) {
-          console.error("STAMP ERROR:", e);
-        }
-      }
+    // позиция — чуть правее центра (как в реальных чеках)
+    const stampX = pageWidth / 2 + 40 - stampSize / 2;
+    const stampY = Math.min(y + 10, pageHeight - 200);
+
+    doc.save();
+
+    // прозрачность (как настоящая краска)
+    doc.opacity(0.85);
+
+    // поворот — чтобы выглядело «поставлено рукой»
+    doc.rotate(-12, {
+      origin: [stampX + stampSize / 2, stampY + stampSize / 2]
+    });
+
+    doc.image(STAMP_PATH, stampX, stampY, {
+      fit: [stampSize, stampSize]
+    });
+
+    doc.restore();
+  } catch (e) {
+    console.error("STAMP ERROR:", e);
+  }
+}
 
       doc.end();
     } catch (err) {
