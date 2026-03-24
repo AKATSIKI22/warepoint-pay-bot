@@ -2,187 +2,458 @@ require("dotenv").config();
 
 const express = require("express");
 const multer = require("multer");
-const fs = require("fs");
+const cors = require("cors");
 const PDFDocument = require("pdfkit");
+const fs = require("fs");
+const path = require("path");
 const { Telegraf, Markup } = require("telegraf");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ===== ENV =====
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TG_CHAT_ID = process.env.TG_CHAT_ID;
-const APP_BASE_URL = process.env.APP_BASE_URL;
+const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.ru";
+const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onrender.com";
+const PORT = Number(process.env.PORT || 3000);
 
-// ===== BOT =====
+if (!BOT_TOKEN) {
+  throw new Error("Не задан BOT_TOKEN");
+}
+if (!TG_CHAT_ID) {
+  throw new Error("Не задан TG_CHAT_ID");
+}
+
 const bot = new Telegraf(BOT_TOKEN);
+const app = express();
 
-// ===== ХРАНИЛИЩЕ =====
-const orders = {};
+const STAMP_PATH = path.join(__dirname, "stamp.png");
+const FONT_REGULAR = path.join(__dirname, "DejaVuSans.ttf");
+const FONT_BOLD = path.join(__dirname, "DejaVuSans-Bold.ttf");
 
-// ===== UPLOAD =====
+// -------------------- middlewares --------------------
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
+app.options("*", cors());
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }
-});
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedMime = ["application/pdf", "image/jpeg", "image/png"];
+    const allowedExt = [".pdf", ".jpg", ".jpeg", ".png"];
+    const name = String(file.originalname || "").toLowerCase();
+    const validExt = allowedExt.some((ext) => name.endsWith(ext));
 
-// ===== ФОРМАТ СУММЫ =====
-function formatAmount(value) {
-  return Number(value).toLocaleString("ru-RU") + " ₽";
-}
-
-// ===== PDF =====
-function generatePDF(meta) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50 });
-
-    const buffers = [];
-    doc.on("data", buffers.push.bind(buffers));
-    doc.on("end", () => resolve(Buffer.concat(buffers)));
-
-    const date = new Date().toLocaleString("ru-RU");
-
-    // ===== HEADER =====
-    doc.fontSize(12).text(date);
-    doc.moveDown();
-
-    doc.fontSize(16).text("ООО «WAREPOINT»");
-    doc.fontSize(11)
-      .text("ИНН 5012110688 / КПП 501201001")
-      .text("ОГРН 1235000092887")
-      .text("г. Москва");
-
-    doc.moveDown();
-    doc.text("------------------------------------------------");
-    doc.moveDown();
-
-    // ===== PRODUCT =====
-    doc.fontSize(13).text(meta.product);
-    doc.text("1 шт");
-
-    doc.moveDown();
-    doc.text("Доставка: 0 ₽ (БЕСПЛАТНО)");
-
-    doc.moveDown();
-    doc.text(`Безналичный: ${formatAmount(meta.amount)}`);
-    doc.text("Платёж через СБП");
-
-    doc.moveDown();
-    doc.text("------------------------------------------------");
-
-    doc.moveDown();
-
-    // ===== TOTAL =====
-    doc.fontSize(20).text(formatAmount(meta.amount));
-
-    doc.moveDown();
-    doc.text("НДС: НЕТ");
-
-    doc.moveDown();
-    doc.text(`Заказ № ${meta.order}`);
-
-    doc.moveDown();
-
-    // ===== ПЕЧАТЬ =====
-    if (fs.existsSync("./stamp.png")) {
-      doc.image("./stamp.png", doc.page.width - 180, doc.y - 100, {
-        width: 120
-      });
+    if (allowedMime.includes(file.mimetype) || validExt) {
+      return cb(null, true);
     }
 
-    doc.end();
-  });
-}
-
-// ===== ОБРАБОТЧИКИ БОТА =====
-
-bot.start((ctx) => {
-  ctx.reply("Бот работает 🚀");
-});
-
-// ===== API ПРИЁМА ЧЕКА =====
-
-app.post("/send", upload.single("file"), async (req, res) => {
-  try {
-    const { order, amount, product } = req.body;
-
-    if (!req.file) {
-      return res.json({ ok: false });
-    }
-
-    orders[order] = {
-      order,
-      amount,
-      product
-    };
-
-    await bot.telegram.sendPhoto(
-      TG_CHAT_ID,
-      { source: req.file.buffer },
-      {
-        caption: `💸 Новый чек\n\nЗаказ: ${order}\nСумма: ${amount} ₽`,
-        ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback("✅ Подтвердить", `ok_${order}`),
-            Markup.button.callback("❌ Отклонить", `no_${order}`)
-          ]
-        ])
-      }
-    );
-
-    res.json({ ok: true });
-
-  } catch (e) {
-    console.log(e);
-    res.json({ ok: false });
+    cb(new Error("Разрешены только PDF, JPG, JPEG и PNG"));
   }
 });
 
-// ===== КНОПКИ =====
-
-bot.action(/ok_(.+)/, async (ctx) => {
-  const order = ctx.match[1];
-  const data = orders[order];
-
-  if (!data) return;
-
-  const pdf = await generatePDF(data);
-
-  await ctx.replyWithDocument({
-    source: pdf,
-    filename: `WAREPOINT_CHECK_${order}.pdf`
-  });
-
-  await ctx.answerCbQuery("Подтверждено ✅");
-});
-
-bot.action(/no_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery("Отклонено ❌");
-});
-
-
-// ===== ЛОГИКА СОЗДАНИЯ ССЫЛКИ (ВСТАВИТЬ СЮДА) =====
-
-const sessions = new Map();
+// -------------------- storage in memory --------------------
+/**
+ * ВНИМАНИЕ:
+ * это хранение в памяти.
+ * После перезапуска Render данные пропадут.
+ * Для старта этого достаточно.
+ */
+const sessions = new Map();   // создание новой ссылки
+const history = new Map();    // история по пользователю
+const orders = new Map();     // статусы/данные заказов
 
 const STEPS = [
-  { key: "order", label: "Введите номер заказа" },
-  { key: "product", label: "Введите название товара" },
-  { key: "amount", label: "Введите сумму к оплате" },
-  { key: "card", label: "Введите номер карты" },
-  { key: "bank", label: "Введите название банка" },
-  { key: "recipient", label: "Введите ФИО получателя" },
-  { key: "minutes", label: "Введите время таймера (минуты)" }
+  { key: "order", label: "Введите номер заказа", example: "Например: 5555" },
+  { key: "product", label: "Введите название товара", example: "Например: RTX 5070" },
+  { key: "amount", label: "Введите сумму к оплате", example: "Например: 55000" },
+  { key: "card", label: "Введите номер карты", example: "Например: 5555555555555555" },
+  { key: "bank", label: "Введите название банка", example: "Например: Озон-Банк" },
+  { key: "recipient", label: "Введите ФИО получателя", example: "Например: Ключко Андрей" },
+  { key: "minutes", label: "Введите время таймера в минутах", example: "Например: 15" }
 ];
 
-function getKeyboard() {
+// -------------------- utils --------------------
+function formatAmount(value) {
+  const num = String(value || "").replace(/[^\d]/g, "");
+  if (!num) return "0 ₽";
+  return `${Number(num).toLocaleString("ru-RU")} ₽`;
+}
+
+function normalizeAmount(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
+
+function normalizeCard(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
+
+function normalizeMinutes(value) {
+  const num = parseInt(String(value || "").replace(/[^\d]/g, ""), 10);
+  if (!num || num < 1) return "15";
+  if (num > 1440) return "1440";
+  return String(num);
+}
+
+function escapeHtml(str = "") {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function getMainKeyboard() {
   return Markup.keyboard([
-    ["💸 Новый платеж"]
+    ["💸 Новый платеж", "📄 Мои ссылки"],
+    ["🔁 Повторить", "❌ Отмена"],
+    ["ℹ️ Помощь"]
   ]).resize();
 }
 
-bot.start((ctx) => {
-  ctx.reply("Бот работает 🚀", getKeyboard());
+function getReceiptDecisionKeyboard(order) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("✅ Подтвердить", `approve:${order}`),
+      Markup.button.callback("❌ Отклонить", `reject:${order}`)
+    ]
+  ]);
+}
+
+function getHistory(userId) {
+  return history.get(String(userId)) || [];
+}
+
+function saveHistory(userId, payload) {
+  const key = String(userId);
+  const list = history.get(key) || [];
+  list.unshift({
+    ...payload,
+    createdAt: new Date().toISOString()
+  });
+  history.set(key, list.slice(0, 10));
+}
+
+function buildPaymentUrl(data) {
+  const expiresAt = Date.now() + Number(normalizeMinutes(data.minutes)) * 60 * 1000;
+
+  const prepared = {
+    order: String(data.order || ""),
+    product: String(data.product || ""),
+    amount: normalizeAmount(data.amount || ""),
+    card: normalizeCard(data.card || ""),
+    bank: String(data.bank || ""),
+    recipient: String(data.recipient || ""),
+    minutes: normalizeMinutes(data.minutes || "15"),
+    status: "pending",
+    expiresAt,
+    updatedAt: Date.now()
+  };
+
+  orders.set(prepared.order, {
+    ...(orders.get(prepared.order) || {}),
+    ...prepared
+  });
+
+  const params = new URLSearchParams({
+    order: prepared.order,
+    product: prepared.product,
+    amount: prepared.amount,
+    card: prepared.card,
+    bank: prepared.bank,
+    recipient: prepared.recipient,
+    method: "Перевод на карту",
+    expires: String(prepared.expiresAt)
+  });
+
+  return `${BASE_PAYMENT_URL}?${params.toString()}`;
+}
+
+function buildClientMessage(data, url) {
+  return [
+    `Здравствуйте! Ваш заказ № ${data.order} сформирован.`,
+    "",
+    `Товар: ${data.product}`,
+    `Сумма к оплате: ${formatAmount(data.amount)}`,
+    "",
+    `Ссылка на оплату:`,
+    url,
+    "",
+    `После оплаты нажмите кнопку «Я оплатил» на странице и отправьте подтверждение.`
+  ].join("\n");
+}
+
+function ensureFonts() {
+  if (!fs.existsSync(FONT_REGULAR)) {
+    throw new Error("Не найден файл DejaVuSans.ttf");
+  }
+  if (!fs.existsSync(FONT_BOLD)) {
+    throw new Error("Не найден файл DejaVuSans-Bold.ttf");
+  }
+}
+
+function generateConfirmationPdfBuffer(meta) {
+  return new Promise((resolve, reject) => {
+    try {
+      ensureFonts();
+
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 50
+      });
+
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      doc.registerFont("regular", FONT_REGULAR);
+      doc.registerFont("bold", FONT_BOLD);
+
+      const order = meta.order || "—";
+      const product = meta.product || "Товар";
+      const amount = formatAmount(meta.amount || "0");
+      const date = new Date().toLocaleString("ru-RU");
+
+      doc.font("regular").fontSize(12).text(date);
+      doc.moveDown();
+
+      doc.font("bold").fontSize(16).text("ООО «WAREPOINT»");
+      doc.font("regular").fontSize(11)
+        .text("ИНН 5012110688 / КПП 501201001")
+        .text("ОГРН 1235000092887")
+        .text("г. Москва");
+
+      doc.moveDown();
+      doc.text("------------------------------------------------");
+      doc.moveDown();
+
+      doc.font("bold").fontSize(13).text(product);
+      doc.font("regular").fontSize(12).text("1 шт");
+      doc.moveDown();
+
+      doc.text("Доставка: 0 ₽ (БЕСПЛАТНО)");
+      doc.moveDown();
+
+      doc.text(`Безналичный: ${amount}`);
+      doc.text("Платёж через СБП");
+      doc.moveDown();
+
+      doc.text("------------------------------------------------");
+      doc.moveDown();
+
+      doc.font("bold").fontSize(14).text("СУММА");
+      doc.font("bold").fontSize(20).text(amount);
+      doc.moveDown();
+
+      doc.font("regular").fontSize(12).text("НДС: НЕТ");
+      doc.moveDown();
+
+      doc.text(`Заказ № ${order}`);
+      doc.moveDown();
+
+      doc.text("************************************************");
+      doc.moveDown();
+
+      doc.font("bold").fontSize(16).text(`ИТОГО: ${amount}`);
+      doc.moveDown(2);
+
+      if (fs.existsSync(STAMP_PATH)) {
+        try {
+          doc.image(STAMP_PATH, doc.page.width - 190, doc.y - 95, {
+            width: 130
+          });
+        } catch (err) {
+          console.error("STAMP ERROR:", err);
+        }
+      }
+
+      doc.moveDown(4);
+      doc.font("regular").fontSize(10).text("Чек сформирован автоматически", { align: "center" });
+      doc.font("regular").fontSize(10).text("ООО «WAREPOINT»", { align: "center" });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function buildReceiptHtml(meta) {
+  const order = meta.order || "—";
+  const product = meta.product || "—";
+  const amount = formatAmount(meta.amount || "0");
+  const dateText = new Date().toLocaleString("ru-RU");
+
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Подтверждение оплаты</title>
+<style>
+  body {
+    margin: 0;
+    background: #0b0f14;
+    font-family: Arial, sans-serif;
+    color: #fff;
+  }
+  .wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .card {
+    width: 100%;
+    max-width: 720px;
+    background: linear-gradient(180deg, #111827 0%, #0b0f14 100%);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 24px;
+    padding: 28px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .title {
+    font-size: 30px;
+    font-weight: 800;
+    margin-bottom: 16px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(34,197,94,.14);
+    color: #bbf7d0;
+    border: 1px solid rgba(34,197,94,.25);
+    margin-bottom: 20px;
+    font-weight: 700;
+  }
+  .row {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    margin-bottom: 12px;
+  }
+  .k {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .v {
+    font-size: 18px;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="title">WAREPOINT</div>
+      <div class="badge">✔ Оплата подтверждена</div>
+
+      <div class="row">
+        <div class="k">Номер заказа</div>
+        <div class="v"># ${escapeHtml(order)}</div>
+      </div>
+
+      <div class="row">
+        <div class="k">Товар</div>
+        <div class="v">${escapeHtml(product)}</div>
+      </div>
+
+      <div class="row">
+        <div class="k">Сумма</div>
+        <div class="v">${escapeHtml(amount)}</div>
+      </div>
+
+      <div class="row">
+        <div class="k">Дата подтверждения</div>
+        <div class="v">${escapeHtml(dateText)}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// -------------------- bot logic --------------------
+async function askNextStep(ctx, session) {
+  const step = STEPS[session.stepIndex];
+  if (!step) return;
+
+  await ctx.reply(
+    `${step.label}\n${step.example}`,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("Отмена", "cancel_create")]
+    ])
+  );
+}
+
+bot.start(async (ctx) => {
+  await ctx.reply("Бот работает 🚀", getMainKeyboard());
+});
+
+bot.command("newpay", async (ctx) => {
+  sessions.set(String(ctx.from.id), {
+    stepIndex: 0,
+    data: {}
+  });
+
+  await ctx.reply("Начинаем создание новой ссылки.", getMainKeyboard());
+  await askNextStep(ctx, sessions.get(String(ctx.from.id)));
+});
+
+bot.command("mylinks", async (ctx) => {
+  const list = getHistory(ctx.from.id);
+
+  if (!list.length) {
+    await ctx.reply("Пока нет созданных ссылок.", getMainKeyboard());
+    return;
+  }
+
+  const text = list.map((item, i) => {
+    return [
+      `${i + 1}. Заказ #${item.order}`,
+      `Товар: ${item.product}`,
+      `Сумма: ${formatAmount(item.amount)}`,
+      `Ссылка: ${item.url}`
+    ].join("\n");
+  }).join("\n\n");
+
+  await ctx.reply(text, getMainKeyboard());
+});
+
+bot.command("repeat", async (ctx) => {
+  const list = getHistory(ctx.from.id);
+
+  if (!list.length) {
+    await ctx.reply("Нет предыдущих заказов для повтора.", getMainKeyboard());
+    return;
+  }
+
+  const last = list[0];
+  const url = buildPaymentUrl(last);
+
+  saveHistory(ctx.from.id, { ...last, url });
+
+  await ctx.reply(
+    `✅ Ссылка создана\n\nЗаказ: ${last.order}\nТовар: ${last.product}\nСумма: ${formatAmount(last.amount)}\n\n${url}`,
+    Markup.inlineKeyboard([
+      [Markup.button.url("Открыть ссылку", url)]
+    ])
+  );
+});
+
+bot.command("cancel", async (ctx) => {
+  sessions.delete(String(ctx.from.id));
+  await ctx.reply("Создание ссылки отменено.", getMainKeyboard());
 });
 
 bot.hears("💸 Новый платеж", async (ctx) => {
@@ -191,58 +462,427 @@ bot.hears("💸 Новый платеж", async (ctx) => {
     data: {}
   });
 
-  await ctx.reply("Создаём ссылку...", getKeyboard());
-  await ctx.reply(STEPS[0].label);
+  await ctx.reply("Начинаем создание новой ссылки.", getMainKeyboard());
+  await askNextStep(ctx, sessions.get(String(ctx.from.id)));
+});
+
+bot.hears("📄 Мои ссылки", async (ctx) => {
+  const list = getHistory(ctx.from.id);
+
+  if (!list.length) {
+    await ctx.reply("Пока нет созданных ссылок.", getMainKeyboard());
+    return;
+  }
+
+  const text = list.map((item, i) => {
+    return [
+      `${i + 1}. Заказ #${item.order}`,
+      `Товар: ${item.product}`,
+      `Сумма: ${formatAmount(item.amount)}`,
+      `Ссылка: ${item.url}`
+    ].join("\n");
+  }).join("\n\n");
+
+  await ctx.reply(text, getMainKeyboard());
+});
+
+bot.hears("🔁 Повторить", async (ctx) => {
+  const list = getHistory(ctx.from.id);
+
+  if (!list.length) {
+    await ctx.reply("Нет предыдущих заказов для повтора.", getMainKeyboard());
+    return;
+  }
+
+  const last = list[0];
+  const url = buildPaymentUrl(last);
+
+  saveHistory(ctx.from.id, { ...last, url });
+
+  await ctx.reply(
+    `✅ Ссылка создана\n\nЗаказ: ${last.order}\nТовар: ${last.product}\nСумма: ${formatAmount(last.amount)}\n\n${url}`,
+    Markup.inlineKeyboard([
+      [Markup.button.url("Открыть ссылку", url)]
+    ])
+  );
+});
+
+bot.hears("❌ Отмена", async (ctx) => {
+  sessions.delete(String(ctx.from.id));
+  await ctx.reply("Создание ссылки отменено.", getMainKeyboard());
+});
+
+bot.hears("ℹ️ Помощь", async (ctx) => {
+  await ctx.reply(
+    [
+      "Используй кнопки ниже:",
+      "💸 Новый платеж",
+      "📄 Мои ссылки",
+      "🔁 Повторить",
+      "❌ Отмена"
+    ].join("\n"),
+    getMainKeyboard()
+  );
+});
+
+bot.action("cancel_create", async (ctx) => {
+  sessions.delete(String(ctx.from.id));
+  await ctx.answerCbQuery("Отменено");
+  await ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => {});
+  await ctx.reply("Создание ссылки отменено.", getMainKeyboard());
+});
+
+bot.action(/^approve:(.+)$/, async (ctx) => {
+  try {
+    const order = String(ctx.match[1]);
+    const current = orders.get(order);
+
+    if (!current) {
+      await ctx.answerCbQuery("Заказ не найден");
+      return;
+    }
+
+    orders.set(order, {
+      ...current,
+      status: "approved",
+      updatedAt: Date.now()
+    });
+
+    await ctx.answerCbQuery("Оплата подтверждена");
+
+    const originalText = (
+      ctx.update.callback_query.message.caption ||
+      ctx.update.callback_query.message.text ||
+      ""
+    ).trim();
+
+    const newText = `${originalText}\n\n✅ <b>Статус:</b> Оплата подтверждена`;
+
+    if (ctx.update.callback_query.message.photo || ctx.update.callback_query.message.document) {
+      await ctx.editMessageCaption(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    } else {
+      await ctx.editMessageText(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    }
+
+    const meta = orders.get(order);
+    const pdfBuffer = await generateConfirmationPdfBuffer(meta);
+    const receiptUrl = `${APP_BASE_URL}/receipt?order=${encodeURIComponent(order)}`;
+
+    await ctx.reply(`✅ Заказ #${order} подтвержден.`);
+
+    await bot.telegram.sendDocument(
+      ctx.chat.id,
+      {
+        source: pdfBuffer,
+        filename: `Подтверждение_оплаты_заказ_${order}.pdf`
+      },
+      {
+        caption: [
+          "📄 Подтверждение оплаты от магазина",
+          `Заказ: #${order}`,
+          "",
+          "Ссылка для клиента:",
+          receiptUrl
+        ].join("\n")
+      }
+    );
+  } catch (err) {
+    console.error("APPROVE ERROR:", err);
+    await ctx.answerCbQuery("Ошибка");
+  }
+});
+
+bot.action(/^reject:(.+)$/, async (ctx) => {
+  try {
+    const order = String(ctx.match[1]);
+    const current = orders.get(order);
+
+    if (!current) {
+      await ctx.answerCbQuery("Заказ не найден");
+      return;
+    }
+
+    orders.set(order, {
+      ...current,
+      status: "rejected",
+      updatedAt: Date.now()
+    });
+
+    await ctx.answerCbQuery("Оплата отклонена");
+
+    const originalText = (
+      ctx.update.callback_query.message.caption ||
+      ctx.update.callback_query.message.text ||
+      ""
+    ).trim();
+
+    const newText = `${originalText}\n\n❌ <b>Статус:</b> Оплата отклонена`;
+
+    if (ctx.update.callback_query.message.photo || ctx.update.callback_query.message.document) {
+      await ctx.editMessageCaption(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    } else {
+      await ctx.editMessageText(newText, {
+        parse_mode: "HTML",
+        reply_markup: Markup.inlineKeyboard([]).reply_markup
+      }).catch(() => {});
+    }
+
+    await ctx.reply(`❌ Заказ #${order} отклонен.`);
+  } catch (err) {
+    console.error("REJECT ERROR:", err);
+    await ctx.answerCbQuery("Ошибка");
+  }
 });
 
 bot.on("text", async (ctx) => {
+  const text = String(ctx.message.text || "").trim();
+
+  if (
+    text === "/start" ||
+    text === "/newpay" ||
+    text === "/mylinks" ||
+    text === "/repeat" ||
+    text === "/cancel" ||
+    text === "💸 Новый платеж" ||
+    text === "📄 Мои ссылки" ||
+    text === "🔁 Повторить" ||
+    text === "❌ Отмена" ||
+    text === "ℹ️ Помощь"
+  ) {
+    return;
+  }
+
   const session = sessions.get(String(ctx.from.id));
   if (!session) return;
 
   const step = STEPS[session.stepIndex];
   if (!step) return;
 
-  session.data[step.key] = ctx.message.text;
-  session.stepIndex++;
+  let value = text;
+
+  if (step.key === "amount") {
+    value = normalizeAmount(value);
+    if (!value) {
+      await ctx.reply("Введите корректную сумму.");
+      return;
+    }
+  }
+
+  if (step.key === "card") {
+    value = normalizeCard(value);
+    if (value.length < 12) {
+      await ctx.reply("Введите корректный номер карты.");
+      return;
+    }
+  }
+
+  if (step.key === "minutes") {
+    value = normalizeMinutes(value);
+  }
+
+  session.data[step.key] = value;
+  session.stepIndex += 1;
+  sessions.set(String(ctx.from.id), session);
 
   if (session.stepIndex >= STEPS.length) {
-    const d = session.data;
+    const url = buildPaymentUrl(session.data);
 
-    const url = `${process.env.BASE_PAYMENT_URL}?order=${d.order}&product=${d.product}&amount=${d.amount}&card=${d.card}&bank=${d.bank}&recipient=${d.recipient}&expires=${Date.now() + d.minutes * 60000}`;
+    saveHistory(ctx.from.id, { ...session.data, url });
 
     await ctx.reply(
-      `✅ Ссылка создана\n\n${url}`,
+      `✅ Ссылка создана\n\nЗаказ: ${session.data.order}\nТовар: ${session.data.product}\nСумма: ${formatAmount(session.data.amount)}\n\n${url}`,
       Markup.inlineKeyboard([
-        [Markup.button.url("Открыть", url)]
+        [Markup.button.url("Открыть ссылку", url)]
       ])
     );
+
+    const clientMessage = buildClientMessage(session.data, url);
+    await ctx.reply(`📋 Шаблон сообщения клиенту:\n\n${clientMessage}`, getMainKeyboard());
 
     sessions.delete(String(ctx.from.id));
     return;
   }
 
-  await ctx.reply(STEPS[session.stepIndex].label);
+  await askNextStep(ctx, session);
 });
 
+// -------------------- http routes --------------------
+app.get("/", (req, res) => {
+  res.status(200).send("Bot is running");
+});
 
-// ===== EXPRESS =====
-app.use(express.json());
-// ===== WEBHOOK =====
+app.get("/status", (req, res) => {
+  const order = String(req.query.order || "").trim();
 
+  if (!order) {
+    return res.status(400).json({
+      ok: false,
+      error: "Не передан номер заказа"
+    });
+  }
+
+  const meta = orders.get(order);
+
+  if (!meta) {
+    return res.json({
+      ok: true,
+      status: "pending",
+      expiresAt: null
+    });
+  }
+
+  return res.json({
+    ok: true,
+    status: meta.status || "pending",
+    expiresAt: meta.expiresAt || null
+  });
+});
+
+app.get("/receipt", (req, res) => {
+  const order = String(req.query.order || "").trim();
+  const meta = orders.get(order);
+
+  if (!order || !meta || meta.status !== "approved") {
+    return res.status(404).send("Подтверждение не найдено или заказ не подтвержден");
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  return res.send(buildReceiptHtml(meta));
+});
+
+app.post("/send", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        ok: false,
+        error: "Файл не прикреплен"
+      });
+    }
+
+    const {
+      order = "",
+      product = "",
+      amount = "",
+      recipient = "",
+      bank = "",
+      method = "",
+      card_last4 = "",
+      comment = ""
+    } = req.body || {};
+
+    const key = String(order || "");
+
+    const current = orders.get(key) || {};
+    orders.set(key, {
+      ...current,
+      order: key,
+      product: product || current.product || "",
+      amount: normalizeAmount(amount || current.amount || ""),
+      recipient: recipient || current.recipient || "",
+      bank: bank || current.bank || "",
+      method: method || current.method || "Перевод на карту",
+      cardLast4: card_last4 || current.cardLast4 || "",
+      status: current.status || "pending",
+      expiresAt: current.expiresAt || null,
+      updatedAt: Date.now()
+    });
+
+    const status = orders.get(key)?.status || "pending";
+
+    let statusText = "🟡 <b>Статус:</b> Ожидает проверки";
+    if (status === "approved") statusText = "✅ <b>Статус:</b> Оплата подтверждена";
+    if (status === "rejected") statusText = "❌ <b>Статус:</b> Оплата отклонена";
+
+    const caption = [
+      "📥 <b>Новое подтверждение оплаты</b>",
+      "",
+      `📦 <b>Заказ:</b> ${escapeHtml(order || "—")}`,
+      `🖥 <b>Товар:</b> ${escapeHtml(product || "—")}`,
+      `💰 <b>Сумма:</b> ${escapeHtml(formatAmount(amount || "0"))}`,
+      `👤 <b>Получатель:</b> ${escapeHtml(recipient || "—")}`,
+      `🏦 <b>Банк:</b> ${escapeHtml(bank || "—")}`,
+      `💳 <b>Карта:</b> **** ${escapeHtml(card_last4 || "—")}`,
+      `💸 <b>Метод:</b> ${escapeHtml(method || "—")}`,
+      "",
+      `💬 <b>Комментарий:</b> ${escapeHtml(comment || "—")}`,
+      "",
+      statusText
+    ].join("\n");
+
+    const keyboard = getReceiptDecisionKeyboard(key).reply_markup;
+    const isImage = String(req.file.mimetype || "").startsWith("image/");
+
+    if (isImage) {
+      await bot.telegram.sendPhoto(
+        TG_CHAT_ID,
+        { source: req.file.buffer, filename: req.file.originalname },
+        {
+          caption,
+          parse_mode: "HTML",
+          reply_markup: keyboard
+        }
+      );
+    } else {
+      await bot.telegram.sendDocument(
+        TG_CHAT_ID,
+        { source: req.file.buffer, filename: req.file.originalname },
+        {
+          caption,
+          parse_mode: "HTML",
+          reply_markup: keyboard
+        }
+      );
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "Файл успешно отправлен"
+    });
+  } catch (error) {
+    console.error("SEND ERROR:", error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || "Ошибка отправки"
+    });
+  }
+});
+
+app.use((err, req, res, next) => {
+  console.error("EXPRESS ERROR:", err);
+
+  if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({
+      ok: false,
+      error: "Файл больше 10 МБ"
+    });
+  }
+
+  return res.status(400).json({
+    ok: false,
+    error: err.message || "Ошибка запроса"
+  });
+});
+
+// -------------------- webhook --------------------
 app.post("/bot", bot.webhookCallback("/bot"));
 
-(async () => {
+app.listen(PORT, async () => {
+  console.log(`Server started on port ${PORT}`);
+
   try {
     await bot.telegram.deleteWebhook();
     await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
-    console.log("Webhook set:", `${APP_BASE_URL}/bot`);
-  } catch (e) {
-    console.log("Webhook error:", e);
+    console.log(`Webhook set: ${APP_BASE_URL}/bot`);
+  } catch (err) {
+    console.error("Webhook error:", err);
   }
-})();
-
-// ===== START SERVER =====
-
-app.listen(PORT, () => {
-  console.log("Server started on port", PORT);
 });
