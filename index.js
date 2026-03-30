@@ -24,7 +24,6 @@ const STAMP_PATH = path.join(__dirname, "stamp.png");
 const FONT_REGULAR = path.join(__dirname, "DejaVuSans.ttf");
 const FONT_BOLD = path.join(__dirname, "DejaVuSans-Bold.ttf");
 
-// -------------------- middleware --------------------
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
@@ -52,7 +51,6 @@ const upload = multer({
   }
 });
 
-// -------------------- memory --------------------
 const sessions = new Map();
 const history = new Map();
 const orders = new Map();
@@ -67,7 +65,6 @@ const STEPS = [
   { key: "minutes", label: "Введите время таймера в минутах", example: "Например: 15" }
 ];
 
-// -------------------- utils --------------------
 function escapeHtml(str = "") {
   return String(str)
     .replaceAll("&", "&amp;")
@@ -209,7 +206,6 @@ function ensureFonts() {
   }
 }
 
-// -------------------- PDF --------------------
 function generateConfirmationPdfBuffer(meta) {
   return new Promise((resolve, reject) => {
     try {
@@ -240,30 +236,20 @@ function generateConfirmationPdfBuffer(meta) {
       const date = getDateTime();
 
       function hr(y) {
-        doc
-          .moveTo(left, y)
-          .lineTo(right, y)
-          .lineWidth(1)
-          .strokeColor("#666")
-          .stroke();
+        doc.moveTo(left, y).lineTo(right, y).lineWidth(1).strokeColor("#666").stroke();
       }
 
       function stars(y) {
-        doc
-          .font("regular")
-          .fontSize(9)
-          .fillColor("#888")
-          .text("* ".repeat(38), left, y, {
-            width: contentWidth,
-            align: "center"
-          });
+        doc.font("regular").fontSize(9).fillColor("#888").text("* ".repeat(38), left, y, {
+          width: contentWidth,
+          align: "center"
+        });
       }
 
       doc.rect(0, 0, pageWidth, pageHeight).fill("#efefef");
 
       let y = 30;
 
-      // Шапка
       doc
         .font("bold")
         .fontSize(14)
@@ -306,7 +292,6 @@ function generateConfirmationPdfBuffer(meta) {
           align: "right"
         });
 
-      // Центральный блок
       y += 42;
       doc
         .font("regular")
@@ -324,24 +309,20 @@ function generateConfirmationPdfBuffer(meta) {
       });
 
       y += 18;
-      doc
-        .fillColor("#111")
-        .text("ИНН 9726099596", left, y, {
-          width: contentWidth,
-          align: "center"
-        });
+      doc.fillColor("#111").text("ИНН 9726099596", left, y, {
+        width: contentWidth,
+        align: "center"
+      });
 
       y += 16;
-      doc
-        .text("КПП 772601001", left, y, {
-          width: contentWidth,
-          align: "center"
-        });
+      doc.text("КПП 772601001", left, y, {
+        width: contentWidth,
+        align: "center"
+      });
 
       y += 28;
       stars(y);
 
-      // Товар
       y += 34;
       doc
         .font("regular")
@@ -352,11 +333,10 @@ function generateConfirmationPdfBuffer(meta) {
           align: "left"
         });
 
-      doc
-        .text("1шт", right - 52, y, {
-          width: 40,
-          align: "right"
-        });
+      doc.text("1шт", right - 52, y, {
+        width: 40,
+        align: "right"
+      });
 
       y += 36;
       doc
@@ -370,7 +350,6 @@ function generateConfirmationPdfBuffer(meta) {
       y += 40;
       stars(y);
 
-      // Доставка
       y += 32;
       doc
         .font("regular")
@@ -378,11 +357,10 @@ function generateConfirmationPdfBuffer(meta) {
         .fillColor("#555")
         .text("Доставка", left + 110, y);
 
-      doc
-        .text("0.00", right - 60, y, {
-          width: 40,
-          align: "right"
-        });
+      doc.text("0.00", right - 60, y, {
+        width: 40,
+        align: "right"
+      });
 
       y += 22;
       doc
@@ -397,7 +375,6 @@ function generateConfirmationPdfBuffer(meta) {
       y += 24;
       stars(y);
 
-      // Оплата
       y += 34;
       doc
         .font("regular")
@@ -405,55 +382,41 @@ function generateConfirmationPdfBuffer(meta) {
         .fillColor("#111")
         .text("Безналичный", left + 110, y);
 
-      doc
-        .text(amount, right - 140, y, {
-          width: 120,
-          align: "right"
-        });
+      doc.text(amount, right - 140, y, {
+        width: 120,
+        align: "right"
+      });
 
-      // Итог
       y += 34;
       doc
         .font("bold")
         .fontSize(11.5)
         .text("Сума", left + 110, y);
 
-      doc
-        .text(amount, right - 140, y, {
-          width: 120,
-          align: "right"
-        });
+      doc.text(amount, right - 140, y, {
+        width: 120,
+        align: "right"
+      });
 
       y += 28;
-      doc
-        .font("regular")
-        .fontSize(11)
-        .text("С НДС НЕТ", left + 110, y);
+      doc.font("regular").fontSize(11).text("С НДС НЕТ", left + 110, y);
 
-      doc
-        .fillColor("#bcbcbc")
-        .text("0%", pageWidth / 2 - 10, y, {
-          width: 30,
-          align: "center"
-        });
+      doc.fillColor("#bcbcbc").text("0%", pageWidth / 2 - 10, y, {
+        width: 30,
+        align: "center"
+      });
 
-      doc
-        .fillColor("#111")
-        .text("0", right - 30, y, {
-          width: 18,
-          align: "right"
-        });
+      doc.fillColor("#111").text("0", right - 30, y, {
+        width: 18,
+        align: "right"
+      });
 
       y += 30;
-      doc
-        .font("regular")
-        .fontSize(11)
-        .text(`Заказ №${order}`, left + 110, y);
+      doc.font("regular").fontSize(11).text(`Заказ №${order}`, left + 110, y);
 
       y += 14;
       stars(y);
 
-      // Нижняя печать
       if (fs.existsSync(STAMP_PATH)) {
         try {
           const stampSize = 128;
@@ -481,7 +444,6 @@ function generateConfirmationPdfBuffer(meta) {
   });
 }
 
-// -------------------- receipt html --------------------
 function buildReceiptHtml(meta) {
   const order = meta.order || "—";
   const product = meta.product || "—";
@@ -536,7 +498,6 @@ function buildReceiptHtml(meta) {
 </html>`;
 }
 
-// -------------------- bot handlers --------------------
 async function askNextStep(ctx, session) {
   const step = STEPS[session.stepIndex];
   if (!step) return;
@@ -860,7 +821,6 @@ bot.on("text", async (ctx) => {
   await askNextStep(ctx, session);
 });
 
-// -------------------- routes --------------------
 app.get("/", (req, res) => {
   res.status(200).send("Bot is running");
 });
@@ -922,18 +882,13 @@ app.post("/send", upload.single("file"), async (req, res) => {
       method = "",
       card_last4 = "",
       comment = "",
-
       customer_name = "",
       customer_email = "",
       customer_phone = "",
       delivery = "",
       full_address = "",
-      postal_code = "",
-      region = "",
       city = "",
-      street = "",
-      house = "",
-      flat = "",
+      pickup = "",
       delivery_comment = ""
     } = req.body || {};
 
@@ -949,20 +904,14 @@ app.post("/send", upload.single("file"), async (req, res) => {
       bank: bank || current.bank || "",
       method: method || current.method || "Перевод на карту",
       cardLast4: card_last4 || current.cardLast4 || "",
-
       customerName: customer_name || current.customerName || "",
       customerEmail: customer_email || current.customerEmail || "",
       customerPhone: customer_phone || current.customerPhone || "",
       delivery: delivery || current.delivery || "",
       fullAddress: full_address || current.fullAddress || "",
-      postalCode: postal_code || current.postalCode || "",
-      region: region || current.region || "",
       city: city || current.city || "",
-      street: street || current.street || "",
-      house: house || current.house || "",
-      flat: flat || current.flat || "",
+      pickup: pickup || current.pickup || "",
       deliveryComment: delivery_comment || current.deliveryComment || "",
-
       status: current.status || "pending",
       expiresAt: current.expiresAt || null,
       updatedAt: Date.now()
@@ -993,13 +942,9 @@ app.post("/send", upload.single("file"), async (req, res) => {
       "",
       "<b>Доставка</b>",
       `🚚 <b>Служба:</b> ${escapeHtml(delivery || meta.delivery || "—")}`,
-      `🏠 <b>Адрес:</b> ${escapeHtml(full_address || meta.fullAddress || "—")}`,
-      `📮 <b>Индекс:</b> ${escapeHtml(postal_code || meta.postalCode || "—")}`,
-      `🌍 <b>Регион:</b> ${escapeHtml(region || meta.region || "—")}`,
       `🏙 <b>Город:</b> ${escapeHtml(city || meta.city || "—")}`,
-      `🛣 <b>Улица:</b> ${escapeHtml(street || meta.street || "—")}`,
-      `🏡 <b>Дом:</b> ${escapeHtml(house || meta.house || "—")}`,
-      `🏢 <b>Кв/офис:</b> ${escapeHtml(flat || meta.flat || "—")}`,
+      `🏠 <b>Адрес:</b> ${escapeHtml(full_address || meta.fullAddress || "—")}`,
+      `📍 <b>ПВЗ / отделение:</b> ${escapeHtml(pickup || meta.pickup || "—")}`,
       `📝 <b>Комментарий к доставке:</b> ${escapeHtml(delivery_comment || meta.deliveryComment || "—")}`,
       "",
       `💬 <b>Комментарий:</b> ${escapeHtml(comment || "—")}`,
@@ -1061,7 +1006,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// -------------------- webhook --------------------
 app.post("/bot", bot.webhookCallback("/bot"));
 
 app.listen(PORT, async () => {
