@@ -106,13 +106,18 @@ function normalizeMinutes(value) {
 function getDateTime() {
   const now = new Date();
 
-  const day = String(now.getDate()).padStart(2, "0");
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const year = now.getFullYear();
+  // перевод в московское время
+  const moscow = new Date(
+    now.toLocaleString("en-US", { timeZone: "Europe/Moscow" })
+  );
 
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
+  const day = String(moscow.getDate()).padStart(2, "0");
+  const month = String(moscow.getMonth() + 1).padStart(2, "0");
+  const year = moscow.getFullYear();
+
+  const hours = String(moscow.getHours()).padStart(2, "0");
+  const minutes = String(moscow.getMinutes()).padStart(2, "0");
+  const seconds = String(moscow.getSeconds()).padStart(2, "0");
 
   return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
 }
