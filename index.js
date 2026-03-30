@@ -106,6 +106,20 @@ function normalizeMinutes(value) {
   return String(num);
 }
 
+function getDateTime() {
+  const now = new Date();
+
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const year = now.getFullYear();
+
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+
+  return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+}
+
 function getMainKeyboard() {
   return Markup.keyboard([
     ["💸 Новый платеж", "📄 Мои ссылки"],
@@ -223,7 +237,7 @@ function generateConfirmationPdfBuffer(meta) {
       const order = String(meta.order || "—");
       const product = String(meta.product || "Товар");
       const amount = formatAmountPdf(meta.amount || "0");
-      const date = new Date().toLocaleString("ru-RU");
+      const date = getDateTime();
 
       function hr(y) {
         doc
@@ -397,13 +411,6 @@ function generateConfirmationPdfBuffer(meta) {
           align: "right"
         });
 
-      y += 20;
-      doc
-        .text("Платёж через СБП", left, y, {
-          width: contentWidth,
-          align: "center"
-        });
-
       // Итог
       y += 34;
       doc
@@ -446,7 +453,7 @@ function generateConfirmationPdfBuffer(meta) {
       y += 14;
       stars(y);
 
-      // Нижняя печать — чуть вправо и с заходом на строки
+      // Нижняя печать
       if (fs.existsSync(STAMP_PATH)) {
         try {
           const stampSize = 128;
@@ -479,7 +486,7 @@ function buildReceiptHtml(meta) {
   const order = meta.order || "—";
   const product = meta.product || "—";
   const amount = formatAmount(meta.amount || "0");
-  const dateText = new Date().toLocaleString("ru-RU");
+  const dateText = getDateTime();
 
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -914,12 +921,25 @@ app.post("/send", upload.single("file"), async (req, res) => {
       bank = "",
       method = "",
       card_last4 = "",
-      comment = ""
+      comment = "",
+
+      customer_name = "",
+      customer_email = "",
+      customer_phone = "",
+      delivery = "",
+      full_address = "",
+      postal_code = "",
+      region = "",
+      city = "",
+      street = "",
+      house = "",
+      flat = "",
+      delivery_comment = ""
     } = req.body || {};
 
     const key = String(order || "");
-
     const current = orders.get(key) || {};
+
     orders.set(key, {
       ...current,
       order: key,
@@ -929,12 +949,27 @@ app.post("/send", upload.single("file"), async (req, res) => {
       bank: bank || current.bank || "",
       method: method || current.method || "Перевод на карту",
       cardLast4: card_last4 || current.cardLast4 || "",
+
+      customerName: customer_name || current.customerName || "",
+      customerEmail: customer_email || current.customerEmail || "",
+      customerPhone: customer_phone || current.customerPhone || "",
+      delivery: delivery || current.delivery || "",
+      fullAddress: full_address || current.fullAddress || "",
+      postalCode: postal_code || current.postalCode || "",
+      region: region || current.region || "",
+      city: city || current.city || "",
+      street: street || current.street || "",
+      house: house || current.house || "",
+      flat: flat || current.flat || "",
+      deliveryComment: delivery_comment || current.deliveryComment || "",
+
       status: current.status || "pending",
       expiresAt: current.expiresAt || null,
       updatedAt: Date.now()
     });
 
-    const status = orders.get(key)?.status || "pending";
+    const meta = orders.get(key);
+    const status = meta?.status || "pending";
 
     let statusText = "🟡 <b>Статус:</b> Ожидает проверки";
     if (status === "approved") statusText = "✅ <b>Статус:</b> Оплата подтверждена";
@@ -950,6 +985,22 @@ app.post("/send", upload.single("file"), async (req, res) => {
       `🏦 <b>Банк:</b> ${escapeHtml(bank || "—")}`,
       `💳 <b>Карта:</b> **** ${escapeHtml(card_last4 || "—")}`,
       `💸 <b>Метод:</b> ${escapeHtml(method || "—")}`,
+      "",
+      "<b>Клиент</b>",
+      `🙍 <b>ФИО:</b> ${escapeHtml(customer_name || meta.customerName || "—")}`,
+      `📞 <b>Телефон:</b> ${escapeHtml(customer_phone || meta.customerPhone || "—")}`,
+      `✉️ <b>Email:</b> ${escapeHtml(customer_email || meta.customerEmail || "—")}`,
+      "",
+      "<b>Доставка</b>",
+      `🚚 <b>Служба:</b> ${escapeHtml(delivery || meta.delivery || "—")}`,
+      `🏠 <b>Адрес:</b> ${escapeHtml(full_address || meta.fullAddress || "—")}`,
+      `📮 <b>Индекс:</b> ${escapeHtml(postal_code || meta.postalCode || "—")}`,
+      `🌍 <b>Регион:</b> ${escapeHtml(region || meta.region || "—")}`,
+      `🏙 <b>Город:</b> ${escapeHtml(city || meta.city || "—")}`,
+      `🛣 <b>Улица:</b> ${escapeHtml(street || meta.street || "—")}`,
+      `🏡 <b>Дом:</b> ${escapeHtml(house || meta.house || "—")}`,
+      `🏢 <b>Кв/офис:</b> ${escapeHtml(flat || meta.flat || "—")}`,
+      `📝 <b>Комментарий к доставке:</b> ${escapeHtml(delivery_comment || meta.deliveryComment || "—")}`,
       "",
       `💬 <b>Комментарий:</b> ${escapeHtml(comment || "—")}`,
       "",
