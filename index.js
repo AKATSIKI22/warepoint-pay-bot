@@ -13,6 +13,7 @@ const TG_CHAT_ID = process.env.TG_CHAT_ID;
 const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.ru";
 const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onrender.com";
 const PORT = Number(process.env.PORT || 3000);
+const SITE_FOLDER = "/3052099/";
 
 if (!BOT_TOKEN) {
   console.error("❌ Нет BOT_TOKEN!");
@@ -117,111 +118,107 @@ function generateConfirmationPdfBuffer(meta) {
       }
 
       function lineOfStars(y) {
-        const starLine = "* ".repeat(30);
-        doc.font("regular").fontSize(9).text(starLine, left, y, {
-          width: right - left,
-          align: "center"
-        });
+        doc.font("regular").fontSize(8);
+        const starLine = "* ".repeat(35);
+        doc.text(starLine, left, y, { align: "center" });
       }
 
       const dateTime = getDateTime();
       const order = String(meta.order || "—");
       const product = String(meta.product || "Товар");
       const amount = formatAmountPdf(meta.amount || "0");
-      const cardLast4 = meta.method === "card" ? getLast4(meta.requisite) : "";
-      const phone = meta.method === "phone" ? meta.requisite : "";
 
-      let y = 40;
+      let y = 30;
 
       // ШАПКА
-      doc.font("bold").fontSize(12).fillColor("#000");
+      doc.font("bold").fontSize(11).fillColor("#000");
       doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
       
-      y += 40;
-      doc.font("regular").fontSize(9);
+      y += 30;
+      doc.font("regular").fontSize(8);
       doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 15;
+      y += 13;
       doc.text("ИНН: 9726099596", left, y, { align: "center" });
-      y += 15;
+      y += 13;
       doc.text("ОГРН: 1257700249157", left, y, { align: "center" });
-      y += 15;
+      y += 13;
       doc.text("КПП: 772601001", left, y, { align: "center" });
 
-      y += 30;
+      y += 25;
       hr(y);
       
-      y += 20;
-      doc.font("bold").fontSize(11);
+      y += 15;
+      doc.font("bold").fontSize(10);
       doc.text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
 
-      y += 25;
-      doc.font("regular").fontSize(10);
+      y += 20;
+      doc.font("regular").fontSize(9);
       doc.text(dateTime, left, y, { align: "center" });
 
-      y += 30;
-      doc.font("regular").fontSize(9);
+      y += 25;
+      doc.font("regular").fontSize(8);
       doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-      y += 15;
+      y += 13;
       doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 15;
+      y += 13;
       doc.text("ИНН 9726099596", left, y, { align: "center" });
-      y += 15;
+      y += 13;
       doc.text("КПП 772601001", left, y, { align: "center" });
 
-      // Международный разрыв
-      y += 40;
+      y += 35;
 
-      // ТОВАР
-      doc.font("bold").fontSize(22);
-      doc.text("Пила торцовочная аккумуляторная EINHELL TE-SM 36/10 L", left, y, { align: "center" });
-      y += 40;
+      // ТОВАР (реальные данные)
+      doc.font("bold").fontSize(16);
+      doc.text(product, left, y, { align: "center" });
+      y += 30;
+      doc.font("bold").fontSize(18);
       doc.text("1шт", left, y, { align: "center" });
 
-      y += 35;
-      doc.font("bold").fontSize(24);
-      doc.text("28 999,00 ₽", left, y, { align: "center" });
+      y += 30;
+      doc.font("bold").fontSize(22);
+      doc.text(amount, left, y, { align: "center" });
 
-      y += 40;
+      y += 35;
       lineOfStars(y);
 
-      y += 35;
-      doc.font("regular").fontSize(14);
-      doc.text("Доставка", left, y, { align: "center" });
-      y += 25;
-      doc.font("bold").fontSize(28);
-      doc.text("0.00", left, y, { align: "center" });
       y += 30;
-      doc.font("regular").fontSize(16);
+      doc.font("regular").fontSize(12);
+      doc.text("Доставка", left, y, { align: "center" });
+      y += 22;
+      doc.font("bold").fontSize(26);
+      doc.text("0.00", left, y, { align: "center" });
+      y += 25;
+      doc.font("regular").fontSize(14);
       doc.text("Бесплатно", left, y, { align: "center" });
 
-      y += 40;
-      doc.font("regular").fontSize(12);
+      y += 35;
+      doc.font("regular").fontSize(11);
       doc.text("Безналичный", left, y, { align: "center" });
-      y += 20;
-      doc.font("regular").fontSize(13);
+      y += 18;
+      doc.font("regular").fontSize(12);
       doc.text("Платёж через СБП", left, y, { align: "center" });
 
-      y += 40;
-      doc.font("bold").fontSize(24);
-      doc.text("28 999,00 ₽", left, y, { align: "center" });
-      y += 30;
-      doc.font("regular").fontSize(16);
+      y += 35;
+      doc.font("bold").fontSize(22);
+      doc.text(amount, left, y, { align: "center" });
+      y += 25;
+      doc.font("regular").fontSize(14);
       doc.text("Сума", left, y, { align: "center" });
 
-      y += 40;
+      y += 35;
       lineOfStars(y);
 
-      y += 35;
-      doc.font("regular").fontSize(15);
+      y += 30;
+      doc.font("regular").fontSize(14);
       doc.text("С НДС НЕТ", left, y, { align: "center" });
-      y += 25;
+      y += 22;
       doc.text("0%", left, y, { align: "center" });
 
-      y += 40;
+      y += 35;
       doc.font("bold").fontSize(14);
       doc.text(`Заказ №${order}`, left, y, { align: "center" });
 
-      y += 40;
+      y += 35;
       lineOfStars(y);
 
       // Печать
@@ -229,7 +226,7 @@ function generateConfirmationPdfBuffer(meta) {
         try {
           const size = 140;
           const x = pageWidth / 2 - size / 2;
-          const yStamp = y + 25;
+          const yStamp = y + 20;
 
           doc.save();
           doc.opacity(0.80);
@@ -277,6 +274,7 @@ function showMainMenu(ctx) {
   return ctx.reply("👇 Выберите действие:", Markup.keyboard(MAIN_MENU).resize());
 }
 
+// 👇 ИСПРАВЛЕННАЯ buildPaymentUrl — передаёт ВСЕ параметры
 function buildPaymentUrl(data) {
   const params = new URLSearchParams();
   
@@ -299,7 +297,11 @@ function buildPaymentUrl(data) {
   const expires = Date.now() + 15 * 60 * 1000;
   params.set("expires", String(expires));
 
-  const url = `${BASE_PAYMENT_URL}?${params.toString()}`;
+  const url = `${BASE_PAYMENT_URL}${SITE_FOLDER}?${params.toString()}`;
+  
+  console.log("🔗 URL:", url);
+  console.log("📱 requisition:", data.requisite);
+  console.log("📱 method:", data.method);
   
   const orderId = data.order || Math.random().toString(36).substring(2, 8);
   orders.set(orderId, { ...data, id: orderId, status: "pending", createdAt: Date.now() });
@@ -530,7 +532,7 @@ app.post("/send", upload.single("file"), async (req, res) => {
   }
 });
 
-// ============ КНОПКИ ПОДТВЕРДИТЬ/ОТКЛОНИТЬ ============
+// ============ КНОПКИ ============
 bot.action(/approve_(.+)/, async (ctx) => {
   const orderId = ctx.match[1];
   const order = orders.get(orderId);
@@ -554,9 +556,7 @@ bot.action(/approve_(.+)/, async (ctx) => {
     await ctx.editMessageText(newText);
 
     await ctx.reply(
-      `✅ Оплата подтверждена!\n\n` +
-      `📦 Заказ: #${orderId}\n` +
-      `🔗 Чек: ${receiptUrl}`
+      `✅ Оплата подтверждена!\n\n📦 Заказ: #${orderId}\n🔗 Чек: ${receiptUrl}`
     );
 
     await ctx.replyWithDocument({
@@ -597,7 +597,4 @@ app.listen(PORT, async () => {
   await bot.telegram.deleteWebhook();
   await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
   console.log("✅ Бот и API запущены на порту", PORT);
-  console.log("📁 DejaVuSans.ttf:", fs.existsSync(FONT_REGULAR) ? "✅" : "❌");
-  console.log("📁 DejaVuSans-Bold.ttf:", fs.existsSync(FONT_BOLD) ? "✅" : "❌");
-  console.log("📁 stamp.png:", fs.existsSync(STAMP_PATH) ? "✅" : "❌");
 });
