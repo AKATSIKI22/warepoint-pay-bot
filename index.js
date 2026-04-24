@@ -32,11 +32,14 @@ const sessions = new Map();
 const orders = new Map();
 const lastOrders = new Map();
 
-// Папка для PDF
 const RECEIPTS_DIR = path.join(__dirname, "receipts");
 if (!fs.existsSync(RECEIPTS_DIR)) {
   fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
 }
+
+// Пути к шрифтам
+const FONT_REGULAR = path.join(__dirname, "DejaVuSans.ttf");
+const FONT_BOLD = path.join(__dirname, "DejaVuSans-Bold.ttf");
 
 // ============ ФУНКЦИИ ============
 function normalizeDigits(value) {
@@ -85,64 +88,101 @@ function getDateTime() {
   return new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 }
 
-// ============ PDF-ЧЕК ============
+// ============ PDF С РУССКИМИ ШРИФТАМИ ============
 async function generateReceiptPDF(orderData) {
-  return new Promise((resolve) => {
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
-    const buffers = [];
-    
-    doc.on("data", (chunk) => buffers.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(buffers)));
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: "A4", margin: 50 });
+      const buffers = [];
+      
+      // Регистрируем шрифты
+      if (fs.existsSync(FONT_REGULAR)) {
+        doc.registerFont("Regular", FONT_REGULAR);
+      }
+      if (fs.existsSync(FONT_BOLD)) {
+        doc.registerFont("Bold", FONT_BOLD);
+      }
+      
+      doc.on("data", (chunk) => buffers.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
 
-    doc.fontSize(22).text("ПОДТВЕРЖДЕНИЕ ОПЛАТЫ", { align: "center" });
-    doc.moveDown(0.5);
-    doc.fontSize(14).text(`Заказ #${orderData.order}`, { align: "center" });
-    doc.moveDown(1);
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
-    doc.moveDown(1);
+      const useFont = fs.existsSync(FONT_BOLD) ? "Bold" : "Helvetica-Bold";
+      const useFontRegular = fs.existsSync(FONT_REGULAR) ? "Regular" : "Helvetica";
 
-    doc.fontSize(12).text(`Дата: ${getDateTime()}`);
-    doc.text(`Статус: ОПЛАЧЕНО`);
-    doc.moveDown(1);
-
-    doc.fontSize(14).text("Детали заказа:", { underline: true });
-    doc.moveDown(0.5);
-    doc.fontSize(12);
-    doc.text(`Товар: ${orderData.product}`);
-    doc.text(`Сумма: ${formatAmount(orderData.amount)}`);
-    
-    const methodText = orderData.method === "phone" ? "По номеру телефона" : "На карту";
-    doc.text(`Способ оплаты: ${methodText}`);
-    doc.text(`Реквизит: ${orderData.requisite}`);
-    doc.text(`Банк: ${orderData.bank}`);
-    doc.text(`Получатель: ${orderData.recipient}`);
-    doc.moveDown(1);
-
-    if (orderData.customer_name) {
-      doc.fontSize(14).text("Данные клиента:", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(12);
-      doc.text(`ФИО: ${orderData.customer_name}`);
-      doc.text(`Телефон: ${orderData.customer_phone}`);
-      doc.text(`Email: ${orderData.customer_email}`);
+      // Заголовок
+      doc.font(useFont).fontSize(22).fillColor("#1d4f91");
+      doc.text("ПОДТВЕРЖДЕНИЕ ОПЛАТЫ", { align: "center" });
+      doc.moveDown(0.3);
+      doc.font(useFont).fontSize(14).fillColor("#000");
+      doc.text(`Заказ #${orderData.order}`, { align: "center" });
       doc.moveDown(1);
-    }
-
-    if (orderData.delivery) {
-      doc.fontSize(14).text("Доставка:", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(12);
-      doc.text(`Служба: ${orderData.delivery}`);
-      doc.text(`Город: ${orderData.city}`);
-      doc.text(`Адрес: ${orderData.full_address}`);
+      
+      // Линия
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
       doc.moveDown(1);
-    }
 
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
-    doc.moveDown(1);
-    doc.fontSize(10).text("Спасибо за оплату! Заказ принят в обработку.", { align: "center" });
-    
-    doc.end();
+      // Дата и статус
+      doc.font(useFontRegular).fontSize(12).fillColor("#000");
+      doc.text(`Дата: ${getDateTime()}`);
+      doc.font(useFont).fillColor("#16a34a");
+      doc.text(`Статус: ОПЛАЧЕНО`);
+      doc.fillColor("#000");
+      doc.moveDown(1);
+
+      // Детали заказа
+      doc.font(useFont).fontSize(14);
+      doc.text("Детали заказа:");
+      doc.moveDown(0.5);
+      
+      doc.font(useFontRegular).fontSize(12);
+      doc.text(`Товар: ${orderData.product}`);
+      doc.text(`Сумма: ${formatAmount(orderData.amount)}`);
+      
+      const methodText = orderData.method === "phone" ? "По номеру телефона" : "На карту";
+      doc.text(`Способ оплаты: ${methodText}`);
+      doc.text(`Реквизит: ${orderData.requisite}`);
+      doc.text(`Банк: ${orderData.bank}`);
+      doc.text(`Получатель: ${orderData.recipient}`);
+      doc.moveDown(1);
+
+      // Данные клиента
+      if (orderData.customer_name) {
+        doc.font(useFont).fontSize(14);
+        doc.text("Данные клиента:");
+        doc.moveDown(0.5);
+        doc.font(useFontRegular).fontSize(12);
+        doc.text(`ФИО: ${orderData.customer_name}`);
+        doc.text(`Телефон: ${orderData.customer_phone}`);
+        doc.text(`Email: ${orderData.customer_email}`);
+        doc.moveDown(1);
+      }
+
+      // Доставка
+      if (orderData.delivery) {
+        doc.font(useFont).fontSize(14);
+        doc.text("Доставка:");
+        doc.moveDown(0.5);
+        doc.font(useFontRegular).fontSize(12);
+        doc.text(`Служба: ${orderData.delivery}`);
+        doc.text(`Город: ${orderData.city}`);
+        doc.text(`Адрес: ${orderData.full_address}`);
+        doc.text(`ПВЗ: ${orderData.pickup || "—"}`);
+        doc.moveDown(1);
+      }
+
+      // Подвал
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
+      doc.moveDown(1);
+      doc.font(useFontRegular).fontSize(10).fillColor("#64748b");
+      doc.text("Спасибо за оплату! Заказ принят в обработку.", { align: "center" });
+      doc.moveDown(0.5);
+      doc.font(useFontRegular).fontSize(8);
+      doc.text(`Дата формирования: ${getDateTime()}`, { align: "center" });
+      
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
@@ -370,13 +410,13 @@ app.post("/send", upload.single("file"), async (req, res) => {
       return res.json({ ok: false, error: "Заказ не найден" });
     }
 
-    // Сохраняем данные клиента
     order.customer_name = req.body.customer_name || "";
     order.customer_phone = req.body.customer_phone || "";
     order.customer_email = req.body.customer_email || "";
     order.delivery = req.body.delivery || "";
     order.city = req.body.city || "";
     order.full_address = req.body.full_address || "";
+    order.pickup = req.body.pickup || "";
     order.comment = req.body.comment || "";
     order.status = "checking";
 
@@ -435,30 +475,35 @@ bot.action(/approve_(.+)/, async (ctx) => {
 
   order.status = "approved";
 
-  const pdfBuffer = await generateReceiptPDF(order);
-  const pdfPath = path.join(RECEIPTS_DIR, `receipt_${orderId}.pdf`);
-  fs.writeFileSync(pdfPath, pdfBuffer);
+  try {
+    const pdfBuffer = await generateReceiptPDF(order);
+    const pdfPath = path.join(RECEIPTS_DIR, `receipt_${orderId}.pdf`);
+    fs.writeFileSync(pdfPath, pdfBuffer);
 
-  const receiptUrl = `${APP_BASE_URL}/receipt?order=${orderId}`;
+    const receiptUrl = `${APP_BASE_URL}/receipt?order=${orderId}`;
 
-  await ctx.editMessageText(
-    ctx.callbackQuery.message.text.replace("Ожидает проверки", "Оплата подтверждена ✅"),
-    { parse_mode: "Markdown" }
-  );
+    const oldText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || "";
+    const newText = oldText.replace("Ожидает проверки", "Оплата подтверждена ✅");
 
-  await ctx.reply(
-    `✅ *Оплата подтверждена!*\n\n` +
-    `📦 Заказ: #${orderId}\n` +
-    `🔗 Чек для клиента: ${receiptUrl}`,
-    { parse_mode: "Markdown" }
-  );
+    await ctx.editMessageText(newText, { parse_mode: "Markdown" });
 
-  await ctx.replyWithDocument({
-    source: pdfBuffer,
-    filename: `Подтверждение_оплаты_заказ_${orderId}.pdf`
-  });
+    await ctx.reply(
+      `✅ *Оплата подтверждена!*\n\n` +
+      `📦 Заказ: #${orderId}\n` +
+      `🔗 Чек для клиента: ${receiptUrl}`,
+      { parse_mode: "Markdown" }
+    );
 
-  return ctx.answerCbQuery("Подтверждено!");
+    await ctx.replyWithDocument({
+      source: pdfBuffer,
+      filename: `Подтверждение_оплаты_заказ_${orderId}.pdf`
+    });
+
+    return ctx.answerCbQuery("Подтверждено!");
+  } catch (err) {
+    console.error("Ошибка PDF:", err);
+    return ctx.answerCbQuery("Ошибка создания PDF");
+  }
 });
 
 bot.action(/reject_(.+)/, async (ctx) => {
@@ -471,10 +516,10 @@ bot.action(/reject_(.+)/, async (ctx) => {
 
   order.status = "rejected";
 
-  await ctx.editMessageText(
-    ctx.callbackQuery.message.text.replace("Ожидает проверки", "Оплата отклонена ❌"),
-    { parse_mode: "Markdown" }
-  );
+  const oldText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || "";
+  const newText = oldText.replace("Ожидает проверки", "Оплата отклонена ❌");
+
+  await ctx.editMessageText(newText, { parse_mode: "Markdown" });
 
   return ctx.answerCbQuery("Отклонено!");
 });
@@ -487,4 +532,6 @@ app.listen(PORT, async () => {
   await bot.telegram.deleteWebhook();
   await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
   console.log("✅ Бот и API запущены на порту", PORT);
+  console.log("📁 Шрифты:", fs.existsSync(FONT_REGULAR) ? "DejaVuSans.ttf найден" : "DejaVuSans.ttf НЕ найден!");
+  console.log("📁 Шрифты:", fs.existsSync(FONT_BOLD) ? "DejaVuSans-Bold.ttf найден" : "DejaVuSans-Bold.ttf НЕ найден!");
 });
