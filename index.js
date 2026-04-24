@@ -94,13 +94,16 @@ function getDateTime() {
   return new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 }
 
-// ============ PDF ТОЧНО КАК НА СКРИНЕ ============
+// ============ ТВОЙ PDF КОД ============
 function generateConfirmationPdfBuffer(meta) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: "A4", margin: 30 });
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 28
+      });
+
       const chunks = [];
-      
       doc.on("data", (chunk) => chunks.push(chunk));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
@@ -109,126 +112,65 @@ function generateConfirmationPdfBuffer(meta) {
       doc.registerFont("bold", FONT_BOLD);
 
       const pageWidth = doc.page.width;
-      const left = 30;
-      const right = pageWidth - 30;
+      const left = 36;
+      const right = pageWidth - 36;
+      const contentWidth = right - left;
 
-      function hr(y) {
-        doc.moveTo(left, y).lineTo(right, y).stroke("#000");
-      }
-
-      function lineOfStars(y) {
-        doc.font("regular").fontSize(8);
-        doc.text("* ".repeat(35), left, y, { align: "center" });
-      }
-
-      const dateTime = getDateTime();
       const order = String(meta.order || "—");
       const product = String(meta.product || "Товар");
       const amount = formatAmountPdf(meta.amount || "0");
+      const date = getDateTime();
 
-      let y = 30;
+      function hr(y) {
+        doc.moveTo(left, y).lineTo(right, y).stroke();
+      }
 
-      // ШАПКА
-      doc.font("bold").fontSize(12);
-      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-      
-      y += 35;
-      doc.font("regular").fontSize(9);
-      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 15;
-      doc.text("ИНН: 9726099596", left, y, { align: "center" });
-      y += 15;
-      doc.text("ОГРН: 1257700249157", left, y, { align: "center" });
-      y += 15;
-      doc.text("КПП: 772601001", left, y, { align: "center" });
+      function stars(y) {
+        doc.font("regular").fontSize(9).text("* ".repeat(38), left, y, {
+          width: contentWidth,
+          align: "center"
+        });
+      }
 
-      y += 25;
+      doc.rect(0, 0, pageWidth, doc.page.height).fill("#efefef");
+
+      let y = 40;
+
+      // Заголовок
+      doc.font("bold").fontSize(14).fillColor("#111")
+        .text('ООО "БЕТОН"', left, y);
+
+      y += 40;
       hr(y);
-      
+
       y += 15;
-      doc.font("bold").fontSize(10);
-      doc.text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
+      doc.font("bold").fontSize(11)
+        .text("ЧЕК ОПЛАТЫ", left, y);
 
       y += 20;
-      doc.font("regular").fontSize(9);
-      doc.text(dateTime, left, y, { align: "center" });
+      doc.font("regular").fontSize(10)
+        .text(date, left, y, { align: "right" });
 
-      y += 25;
-      doc.font("regular").fontSize(8);
-      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-      y += 13;
-      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 13;
-      doc.text("ИНН 9726099596", left, y, { align: "center" });
-      y += 13;
-      doc.text("КПП 772601001", left, y, { align: "center" });
-
-      y += 30;
-
-      // ТОВАР
-      doc.font("bold").fontSize(14);
-      doc.text(product, left, y, { align: "center" });
-      y += 25;
-      doc.font("bold").fontSize(12);
-      doc.text("1шт", left, y, { align: "center" });
-
-      y += 30;
-      doc.font("bold").fontSize(22);
-      doc.text(amount, left, y, { align: "center" });
-
-      y += 35;
-      lineOfStars(y);
-
-      y += 30;
-      doc.font("regular").fontSize(12);
-      doc.text("Доставка", left, y, { align: "center" });
+      y += 40;
+      doc.text(`Товар: ${product}`, left, y);
       y += 20;
-      doc.font("bold").fontSize(24);
-      doc.text("0.00", left, y, { align: "center" });
-      y += 25;
-      doc.font("regular").fontSize(12);
-      doc.text("Бесплатно", left, y, { align: "center" });
+      doc.text(`Заказ: №${order}`, left, y);
+      y += 20;
+      doc.text(`Сумма: ${amount}`, left, y);
 
-      y += 35;
-      doc.font("regular").fontSize(11);
-      doc.text("Безналичный", left, y, { align: "center" });
-      y += 18;
-      doc.font("regular").fontSize(12);
-      doc.text("Платёж через СБП", left, y, { align: "center" });
-
-      y += 35;
-      doc.font("bold").fontSize(22);
-      doc.text(amount, left, y, { align: "center" });
-      y += 25;
-      doc.font("regular").fontSize(12);
-      doc.text("Сума", left, y, { align: "center" });
-
-      y += 35;
-      lineOfStars(y);
-
-      y += 30;
-      doc.font("regular").fontSize(12);
-      doc.text("С НДС НЕТ", left, y, { align: "center" });
-      y += 18;
-      doc.text("0%", left, y, { align: "center" });
-
-      y += 30;
-      doc.font("bold").fontSize(12);
-      doc.text(`Заказ №${order}`, left, y, { align: "center" });
-
-      y += 35;
-      lineOfStars(y);
+      y += 40;
+      stars(y);
 
       // Печать
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          const size = 140;
+          const size = 130;
           const x = pageWidth / 2 - size / 2;
-          const yStamp = y + 15;
+          const yStamp = y + 20;
 
           doc.save();
-          doc.opacity(0.80);
-          doc.rotate(-12, {
+          doc.opacity(0.85);
+          doc.rotate(-10, {
             origin: [x + size / 2, yStamp + size / 2]
           });
           doc.image(STAMP_PATH, x, yStamp, {
@@ -236,7 +178,7 @@ function generateConfirmationPdfBuffer(meta) {
           });
           doc.restore();
         } catch (e) {
-          console.error("Ошибка печати:", e);
+          console.error("STAMP ERROR:", e);
         }
       }
 
@@ -272,6 +214,7 @@ function showMainMenu(ctx) {
   return ctx.reply("👇 Выберите действие:", Markup.keyboard(MAIN_MENU).resize());
 }
 
+// 👇 ЧИНИМ НОМЕР - передаём ВСЕ параметры
 function buildPaymentUrl(data) {
   const params = new URLSearchParams();
   
@@ -297,7 +240,7 @@ function buildPaymentUrl(data) {
   const url = `${BASE_PAYMENT_URL}?${params.toString()}`;
   
   console.log("🔗 URL:", url);
-  console.log("📱 requisite:", data.requisite);
+  console.log("📱 requisite передаётся:", data.requisite);
   
   const orderId = data.order || Math.random().toString(36).substring(2, 8);
   orders.set(orderId, { ...data, id: orderId, status: "pending", createdAt: Date.now() });
