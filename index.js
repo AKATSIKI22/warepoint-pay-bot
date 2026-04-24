@@ -789,8 +789,11 @@ bot.on("text", async (ctx) => {
   }
 
 if (key === "card") {
-  // Принимаем любой текст, без ограничений
-  value = text;
+  const digits = normalizeCard(value);
+  if (digits.length < 6) {
+    return ctx.reply("Введите карту или телефон");
+  }
+  value = digits;
 }
   }
 
