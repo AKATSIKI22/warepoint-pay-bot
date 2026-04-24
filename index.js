@@ -4,8 +4,9 @@ const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
 const { Telegraf, Markup } = require("telegraf");
+const PDFDocument = require("pdfkit");
+const path = require("path");
 
-// ПЕРЕМЕННЫЕ
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TG_CHAT_ID = process.env.TG_CHAT_ID;
 const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.ru";
@@ -13,7 +14,7 @@ const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onre
 const PORT = Number(process.env.PORT || 3000);
 
 if (!BOT_TOKEN) {
-  console.error("❌ Нет BOT_TOKEN!");
+  console.error("Нет BOT_TOKEN");
   process.exit(1);
 }
 
@@ -28,28 +29,12 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const sessions = new Map();
 const orders = new Map();
+const lastOrders = new Map();
 
-// ============ УСТАНАВЛИВАЕМ МЕНЮ С КНОПКАМИ ============
-const MAIN_MENU = [
-  ["💳 Новый платеж"],
-  ["📋 Мои ссылки"],
-  ["🔄 Повторить"],
-  ["❌ Отмена"]
-];
-
-// Установка меню при запуске
-async function setupMenu() {
-  try {
-    await bot.telegram.setMyCommands([
-      { command: "new", description: "💳 Новый платеж" },
-      { command: "links", description: "📋 Мои ссылки" },
-      { command: "repeat", description: "🔄 Повторить последний" },
-      { command: "cancel", description: "❌ Отмена" }
-    ]);
-    console.log("✅ Меню команд установлено");
-  } catch (e) {
-    console.error("Ошибка установки меню:", e.message);
-  }
+// Папка для PDF
+const RECEIPTS_DIR = path.join(__dirname, "receipts");
+if (!fs.existsSync(RECEIPTS_DIR)) {
+  fs.mkdirSync(RECEIPTS_DIR);
 }
 
 // ============ ФУНКЦИИ ============
@@ -91,8 +76,109 @@ function isValidPhone(value) {
   return digits.length === 11;
 }
 
-// Хранилище последнего заказа для повтора
-const lastOrders = new Map();
+function getLast4(value) {
+  return String(value || "").replace(/[^\d]/g, "").slice(-4);
+}
+
+function getDateTime() {
+  return new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+}
+
+// ============ PDF-ЧЕК ============
+async function generateReceiptPDF(orderData) {
+  return new Promise((resolve) => {
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const buffers = [];
+    
+    doc.on("data", (chunk) => buffers.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(buffers)));
+
+    // Шрифт
+    doc.fontSize(12);
+
+    // Заголовок
+    doc.fontSize(22).text("ПОДТВЕРЖДЕНИЕ ОПЛАТЫ", { align: "center" });
+    doc.moveDown(0.5);
+    doc.fontSize(14).text(`Заказ #${orderData.order}`, { align: "center" });
+    doc.moveDown(1);
+
+    // Линия
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
+    doc.moveDown(1);
+
+    // Информация
+    doc.fontSize(12).text(`Дата: ${getDateTime()}`);
+    doc.moveDown(0.3);
+    doc.text(`Статус: ОПЛАЧЕНО`);
+    doc.moveDown(1);
+
+    doc.fontSize(14).text("Детали заказа:", { underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(12);
+    doc.text(`Товар: ${orderData.product}`);
+    doc.text(`Сумма: ${formatAmount(orderData.amount)}`);
+    
+    const methodText = orderData.method === "phone" ? "По номеру телефона" : "На карту";
+    doc.text(`Способ оплаты: ${methodText}`);
+    doc.text(`Реквизит: ${orderData.requisite}`);
+    doc.text(`Банк: ${orderData.bank}`);
+    doc.text(`Получатель: ${orderData.recipient}`);
+    doc.moveDown(1);
+
+    if (orderData.customer_name) {
+      doc.fontSize(14).text("Данные клиента:", { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(12);
+      doc.text(`ФИО: ${orderData.customer_name}`);
+      doc.text(`Телефон: ${orderData.customer_phone}`);
+      doc.text(`Email: ${orderData.customer_email}`);
+      doc.moveDown(1);
+    }
+
+    if (orderData.delivery) {
+      doc.fontSize(14).text("Доставка:", { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(12);
+      doc.text(`Служба: ${orderData.delivery}`);
+      doc.text(`Город: ${orderData.city}`);
+      doc.text(`Адрес: ${orderData.full_address}`);
+      doc.moveDown(1);
+    }
+
+    // Линия
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
+    doc.moveDown(1);
+
+    doc.fontSize(10).text("Спасибо за оплату! Заказ принят в обработку.", { align: "center" });
+    
+    doc.end();
+  });
+}
+
+// ============ МЕНЮ ============
+async function setupMenu() {
+  try {
+    await bot.telegram.setMyCommands([
+      { command: "new", description: "💳 Новый платеж" },
+      { command: "links", description: "📋 Мои ссылки" },
+      { command: "repeat", description: "🔄 Повторить" },
+      { command: "cancel", description: "❌ Отмена" }
+    ]);
+  } catch (e) {
+    console.error("Ошибка меню:", e.message);
+  }
+}
+
+const MAIN_MENU = [
+  ["💳 Новый платеж"],
+  ["📋 Мои ссылки"],
+  ["🔄 Повторить"],
+  ["❌ Отмена"]
+];
+
+function showMainMenu(ctx) {
+  return ctx.reply("👇 Выберите действие:", Markup.keyboard(MAIN_MENU).resize());
+}
 
 function buildPaymentUrl(data) {
   const params = new URLSearchParams();
@@ -116,233 +202,122 @@ function buildPaymentUrl(data) {
 
   const url = `${BASE_PAYMENT_URL}?${params.toString()}`;
   
-  // Сохраняем заказ
   const orderId = data.order || Math.random().toString(36).substring(2, 8);
-  orders.set(orderId, { 
-    ...data, 
-    id: orderId, 
-    status: "pending", 
-    createdAt: Date.now() 
-  });
+  orders.set(orderId, { ...data, id: orderId, status: "pending", createdAt: Date.now() });
 
-  console.log("✅ Создан заказ:", orderId);
   return url;
 }
 
 // ============ БОТ ============
-
-// Показываем клавиатуру с кнопками при старте
-function showMainMenu(ctx) {
-  return ctx.reply(
-    "👇 Выберите действие:",
-    Markup.keyboard(MAIN_MENU).resize()
-  );
-}
-
 bot.catch((err, ctx) => {
-  console.error("❌ Ошибка бота:", err.message);
-  ctx.reply("Произошла ошибка. Попробуйте снова.").catch(() => {});
+  console.error("Ошибка бота:", err.message);
 });
 
-// /start
 bot.start(async (ctx) => {
-  console.log("🚀 /start от", ctx.from.id);
   await ctx.reply("🚀 Бот для создания платёжных ссылок");
   await showMainMenu(ctx);
 });
 
-// Команды меню
 bot.command("new", async (ctx) => {
-  console.log("📝 Новый платёж от", ctx.from.id);
   sessions.set(ctx.from.id, { step: "order", data: {} });
-  await ctx.reply("📦 Введите номер заказа:");
+  await ctx.reply("Введите номер заказа:");
 });
 
-bot.command("links", async (ctx) => {
-  const userOrders = [];
-  orders.forEach((order, id) => {
-    if (order.userId === ctx.from.id) {
-      userOrders.push(order);
-    }
-  });
-
-  if (userOrders.length === 0) {
-    return ctx.reply("У вас пока нет созданных ссылок.");
-  }
-
-  let msg = "📋 Ваши ссылки:\n\n";
-  userOrders.slice(-5).forEach(o => {
-    msg += `🔹 Заказ: ${o.order}\n`;
-    msg += `   Товар: ${o.product}\n`;
-    msg += `   Сумма: ${o.amount} ₽\n`;
-    msg += `   Статус: ${o.status}\n\n`;
-  });
-
-  await ctx.reply(msg);
-  await showMainMenu(ctx);
-});
-
-bot.command("repeat", async (ctx) => {
-  const last = lastOrders.get(ctx.from.id);
-  
-  if (!last) {
-    return ctx.reply("Нет последнего заказа для повтора.");
-  }
-
-  const url = buildPaymentUrl({ ...last, userId: ctx.from.id });
-  await ctx.reply(
-    `🔄 Повтор заказа:\n` +
-    `📦 Заказ: ${last.order}\n` +
-    `💰 Сумма: ${formatAmount(last.amount)}\n` +
-    `🔗 ${url}`
-  );
-  await showMainMenu(ctx);
-});
-
-bot.command("cancel", async (ctx) => {
-  sessions.delete(ctx.from.id);
-  await ctx.reply("❌ Текущая операция отменена.");
-  await showMainMenu(ctx);
-});
-
-// Обработка кнопок (текстовых)
 bot.hears("💳 Новый платеж", async (ctx) => {
   sessions.set(ctx.from.id, { step: "order", data: {} });
-  await ctx.reply("📦 Введите номер заказа:");
+  await ctx.reply("Введите номер заказа:");
 });
 
 bot.hears("📋 Мои ссылки", async (ctx) => {
-  const userOrders = [];
-  orders.forEach((order, id) => {
-    if (order.userId === ctx.from.id) {
-      userOrders.push(order);
-    }
+  let msg = "📋 Последние заказы:\n\n";
+  let count = 0;
+  
+  orders.forEach((order) => {
+    if (count >= 5) return;
+    const statusEmoji = order.status === "approved" ? "✅" : order.status === "rejected" ? "❌" : "⏳";
+    msg += `${statusEmoji} Заказ: ${order.order} | ${formatAmount(order.amount)}\n`;
+    count++;
   });
 
-  if (userOrders.length === 0) {
-    return ctx.reply("У вас пока нет созданных ссылок.");
-  }
-
-  let msg = "📋 Ваши последние ссылки:\n\n";
-  userOrders.slice(-5).reverse().forEach(o => {
-    const method = o.method === "card" ? "💳" : "📱";
-    msg += `${method} Заказ: ${o.order}\n`;
-    msg += `   Сумма: ${o.amount} ₽\n`;
-    msg += `   Статус: ${o.status}\n\n`;
-  });
-
+  if (count === 0) msg = "Нет созданных заказов.";
   await ctx.reply(msg);
 });
 
 bot.hears("🔄 Повторить", async (ctx) => {
   const last = lastOrders.get(ctx.from.id);
+  if (!last) return ctx.reply("Нет последнего заказа.");
   
-  if (!last) {
-    return ctx.reply("Нет последнего заказа для повтора.");
-  }
-
   const url = buildPaymentUrl({ ...last, userId: ctx.from.id });
-  await ctx.reply(
-    `🔄 Повтор заказа:\n\n` +
-    `📦 Заказ: ${last.order}\n` +
-    `🛍 Товар: ${last.product}\n` +
-    `💰 Сумма: ${formatAmount(last.amount)}\n\n` +
-    `🔗 ${url}`
-  );
+  await ctx.reply(`🔄 Повтор:\n📦 ${last.order}\n💰 ${formatAmount(last.amount)}\n🔗 ${url}`);
 });
 
 bot.hears("❌ Отмена", async (ctx) => {
   sessions.delete(ctx.from.id);
-  await ctx.reply("❌ Операция отменена.");
+  await ctx.reply("❌ Отменено.");
 });
 
-// Обработка текста (шаги создания)
+// Обработка текста
 bot.on("text", async (ctx) => {
   const session = sessions.get(ctx.from.id);
-  
-  // Если нет активной сессии — игнорируем
-  if (!session) {
-    return;
-  }
+  if (!session) return;
 
   const text = ctx.message.text;
-  console.log(`📨 Пользователь ${ctx.from.id}, шаг ${session.step}: "${text}"`);
 
   try {
     switch (session.step) {
       case "order":
         session.data.order = text;
         session.step = "product";
-        await ctx.reply("🛍 Введите наименование товара:");
+        await ctx.reply("Товар:");
         break;
 
       case "product":
         session.data.product = text;
         session.step = "amount";
-        await ctx.reply("💰 Введите сумму к оплате (только цифры):");
+        await ctx.reply("Сумма (цифры):");
         break;
 
       case "amount":
-        const amountValue = normalizeDigits(text);
-        if (!amountValue) {
-          return await ctx.reply("❌ Введите сумму цифрами:");
-        }
-        session.data.amount = amountValue;
+        const amt = normalizeDigits(text);
+        if (!amt) return ctx.reply("Только цифры!");
+        session.data.amount = amt;
         session.step = "method";
-        await ctx.reply(
-          "💳 Выберите способ оплаты:",
-          Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]])
-            .oneTime()
-            .resize()
+        await ctx.reply("Способ:", 
+          Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]]).resize()
         );
         break;
 
       case "method":
-        const choice = text.toLowerCase();
-        if (choice.includes("карт")) {
+        if (text.includes("карт")) {
           session.data.method = "card";
-          session.step = "requisite";
-          await ctx.reply(
-            "💳 Введите номер карты (15-19 цифр):",
-            Markup.removeKeyboard()
-          );
-        } else if (choice.includes("телефон") || choice.includes("номер")) {
+          await ctx.reply("Номер карты:", Markup.removeKeyboard());
+        } else if (text.includes("телефон") || text.includes("номер")) {
           session.data.method = "phone";
-          session.step = "requisite";
-          await ctx.reply(
-            "📱 Введите номер телефона (11 цифр, начиная с 7 или 8):",
-            Markup.removeKeyboard()
-          );
+          await ctx.reply("Номер телефона:", Markup.removeKeyboard());
         } else {
-          return await ctx.reply(
-            "⚠️ Пожалуйста, используйте кнопки:",
-            Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]])
-              .oneTime()
-              .resize()
+          return ctx.reply("Выберите:", 
+            Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]]).resize()
           );
         }
+        session.step = "requisite";
         break;
 
       case "requisite":
         if (session.data.method === "card") {
-          if (!isValidCard(text)) {
-            return await ctx.reply("❌ Некорректный номер карты. Должно быть 15-19 цифр.");
-          }
+          if (!isValidCard(text)) return ctx.reply("15-19 цифр!");
           session.data.requisite = formatCard(text);
         } else {
-          if (!isValidPhone(text)) {
-            return await ctx.reply("❌ Некорректный номер телефона. Должно быть 11 цифр.");
-          }
+          if (!isValidPhone(text)) return ctx.reply("11 цифр!");
           session.data.requisite = formatPhone(text);
         }
         session.step = "bank";
-        await ctx.reply("🏦 Введите название банка:");
+        await ctx.reply("Банк:");
         break;
 
       case "bank":
         session.data.bank = text;
         session.step = "recipient";
-        await ctx.reply("👤 Введите ФИО получателя:");
+        await ctx.reply("Получатель:");
         break;
 
       case "recipient":
@@ -350,106 +325,93 @@ bot.on("text", async (ctx) => {
         session.data.userId = ctx.from.id;
         
         const url = buildPaymentUrl(session.data);
-        
-        // Сохраняем для повтора
         lastOrders.set(ctx.from.id, { ...session.data });
         
         const methodEmoji = session.data.method === "card" ? "💳" : "📱";
-        const methodName = session.data.method === "card" ? "По карте" : "По номеру телефона";
         
         await ctx.reply(
-          `✅ *Ссылка на оплату создана!*\n\n` +
-          `📦 Заказ: \`${session.data.order}\`\n` +
-          `🛍 Товар: \`${session.data.product}\`\n` +
-          `💰 Сумма: *${formatAmount(session.data.amount)}*\n` +
-          `${methodEmoji} Способ: ${methodName}\n` +
-          `🏦 Банк: \`${session.data.bank}\`\n` +
-          `👤 Получатель: \`${session.data.recipient}\`\n\n` +
-          `🔗 \`${url}\``,
-          { parse_mode: "Markdown" }
+          `✅ Готово!\n📦 ${session.data.order}\n🛍 ${session.data.product}\n💰 ${formatAmount(session.data.amount)}\n${methodEmoji} ${session.data.requisite}\n🔗 ${url}`
         );
         
-        console.log("✅ Заказ создан:", session.data.order);
         sessions.delete(ctx.from.id);
-        
-        // Показываем главное меню
         await showMainMenu(ctx);
         break;
     }
   } catch (err) {
-    console.error("❌ Ошибка в обработчике:", err);
-    await ctx.reply("❌ Произошла ошибка. Начните заново.");
+    console.error("Ошибка:", err);
     sessions.delete(ctx.from.id);
-    await showMainMenu(ctx);
   }
 });
 
 // ============ API ============
 app.get("/status", (req, res) => {
+  const order = orders.get(req.query.order);
+  if (!order) return res.json({ ok: false });
+  res.json({ ok: true, status: order.status, data: order });
+});
+
+app.get("/receipt", (req, res) => {
   const orderId = req.query.order;
-  const order = orders.get(orderId);
-
-  if (!order) {
-    console.log("❌ Заказ не найден:", orderId);
-    return res.json({ ok: false });
+  const filePath = path.join(RECEIPTS_DIR, `receipt_${orderId}.pdf`);
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send("Чек не найден");
   }
-
-  console.log("📊 Статус заказа:", orderId, order.status);
-  res.json({
-    ok: true,
-    status: order.status,
-    data: order
-  });
+  
+  res.sendFile(filePath);
 });
 
 app.post("/send", upload.single("file"), async (req, res) => {
   try {
     const orderId = req.body.order;
-    console.log("📤 Получен чек для заказа:", orderId);
-    
     const order = orders.get(orderId);
 
     if (!order) {
-      console.log("❌ Заказ не найден:", orderId);
       return res.json({ ok: false, error: "Заказ не найден" });
     }
 
+    // Данные клиента
+    order.customer_name = req.body.customer_name || "";
+    order.customer_phone = req.body.customer_phone || "";
+    order.customer_email = req.body.customer_email || "";
+    order.delivery = req.body.delivery || "";
+    order.city = req.body.city || "";
+    order.full_address = req.body.full_address || "";
+    order.comment = req.body.comment || "";
+    order.status = "checking";
+
     const methodEmoji = order.method === "phone" ? "📱" : "💳";
-    const methodName = order.method === "phone" ? "По номеру телефона" : "По карте";
+    const methodName = order.method === "phone" ? "По номеру телефона" : "На карту";
+    const cardMask = order.method === "card" ? `***** ${getLast4(order.requisite)}` : order.requisite;
 
-    let message = `💸 *Новый чек!*\n\n`;
-    message += `📦 Заказ: \`#${order.order}\`\n`;
-    message += `🛍 Товар: \`${order.product}\`\n`;
-    message += `💰 Сумма: *${formatAmount(order.amount)}*\n`;
-    message += `${methodEmoji} Способ: ${methodName}\n`;
-    message += `🔢 Реквизит: \`${order.requisite}\`\n`;
-    message += `🏦 Банк: \`${order.bank}\`\n`;
-    message += `👤 Получатель: \`${order.recipient}\`\n`;
-
-    if (req.body.customer_name) {
-      message += `\n👤 *Клиент:*\n`;
-      message += `   Имя: \`${req.body.customer_name}\`\n`;
-      message += `   Телефон: \`${req.body.customer_phone}\`\n`;
-      message += `   Email: \`${req.body.customer_email}\`\n`;
+    // Сообщение в группу
+    let message = `💸 *Новое подтверждение оплаты*\n\n`;
+    message += `📦 Заказ: ${order.order}\n`;
+    message += `🛍 Товар: ${order.product}\n`;
+    message += `💰 Сумма: ${formatAmount(order.amount)}\n`;
+    message += `👤 Получатель: ${order.recipient}\n`;
+    message += `🏦 Банк: ${order.bank}\n`;
+    message += `${methodEmoji} ${methodName}: ${cardMask}\n`;
+    
+    if (order.comment) {
+      message += `\n💬 Комментарий: ${order.comment}\n`;
     }
+    
+    message += `\n📌 Статус: *Ожидает проверки*`;
 
-    if (req.body.delivery) {
-      message += `\n🚚 *Доставка:*\n`;
-      message += `   Служба: \`${req.body.delivery}\`\n`;
-      message += `   Город: \`${req.body.city}\`\n`;
-      message += `   Адрес: \`${req.body.full_address}\`\n`;
-    }
-
-    if (req.body.comment) {
-      message += `\n💬 *Комментарий:* \`${req.body.comment}\``;
-    }
-
+    // Отправляем в группу с кнопками
     if (TG_CHAT_ID) {
       await bot.telegram.sendMessage(TG_CHAT_ID, message, {
-        parse_mode: "Markdown"
+        parse_mode: "Markdown",
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback("✅ Подтвердить", `approve_${orderId}`),
+            Markup.button.callback("❌ Отклонить", `reject_${orderId}`)
+          ]
+        ])
       });
 
-      // Отправляем файл если есть
+      // Отправляем файл чека если есть
       if (req.file) {
         await bot.telegram.sendDocument(TG_CHAT_ID, {
           source: req.file.buffer,
@@ -458,12 +420,68 @@ app.post("/send", upload.single("file"), async (req, res) => {
       }
     }
 
-    console.log("✅ Чек отправлен в группу");
-    return res.json({ ok: true });
+    res.json({ ok: true });
   } catch (e) {
-    console.error("❌ Ошибка отправки:", e);
-    return res.json({ ok: false, error: e.message });
+    console.error("Ошибка:", e);
+    res.json({ ok: false, error: e.message });
   }
+});
+
+// ============ КНОПКИ ПОДТВЕРДИТЬ/ОТКЛОНИТЬ ============
+bot.action(/approve_(.+)/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const order = orders.get(orderId);
+
+  if (!order) {
+    return ctx.answerCbQuery("Заказ не найден");
+  }
+
+  order.status = "approved";
+
+  // Генерируем PDF
+  const pdfBuffer = await generateReceiptPDF(order);
+  const pdfPath = path.join(RECEIPTS_DIR, `receipt_${orderId}.pdf`);
+  fs.writeFileSync(pdfPath, pdfBuffer);
+
+  const receiptUrl = `${APP_BASE_URL}/receipt?order=${orderId}`;
+
+  await ctx.editMessageText(
+    ctx.callbackQuery.message.text.replace("Ожидает проверки", "Оплата подтверждена ✅"),
+    { parse_mode: "Markdown" }
+  );
+
+  await ctx.reply(
+    `✅ *Оплата подтверждена!*\n\n` +
+    `📦 Заказ: #${orderId}\n` +
+    `🔗 Чек для клиента: ${receiptUrl}`,
+    { parse_mode: "Markdown" }
+  );
+
+  // Отправляем PDF
+  await ctx.replyWithDocument({
+    source: pdfBuffer,
+    filename: `Подтверждение_оплаты_заказ_${orderId}.pdf`
+  });
+
+  return ctx.answerCbQuery("Подтверждено!");
+});
+
+bot.action(/reject_(.+)/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const order = orders.get(orderId);
+
+  if (!order) {
+    return ctx.answerCbQuery("Заказ не найден");
+  }
+
+  order.status = "rejected";
+
+  await ctx.editMessageText(
+    ctx.callbackQuery.message.text.replace("Ожидает проверки", "Оплата отклонена ❌"),
+    { parse_mode: "Markdown" }
+  );
+
+  return ctx.answerCbQuery("Отклонено!");
 });
 
 // ============ ЗАПУСК ============
@@ -471,11 +489,7 @@ app.post("/bot", bot.webhookCallback("/bot"));
 
 app.listen(PORT, async () => {
   await setupMenu();
-  
-  // Удаляем старый вебхук и ставим новый
   await bot.telegram.deleteWebhook();
   await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
-  
   console.log("✅ Бот и API запущены на порту", PORT);
-  console.log("🔗 Вебхук:", `${APP_BASE_URL}/bot`);
 });
