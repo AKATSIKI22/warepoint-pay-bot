@@ -13,7 +13,6 @@ const TG_CHAT_ID = process.env.TG_CHAT_ID;
 const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.ru";
 const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onrender.com";
 const PORT = Number(process.env.PORT || 3000);
-const CHECKOUT_FOLDER = "/checkout/";
 
 if (!BOT_TOKEN) {
   console.error("❌ Нет BOT_TOKEN!");
@@ -184,7 +183,7 @@ function generateConfirmationPdfBuffer(meta) {
       y += 20;
 
       doc.font("regular").fontSize(11).fillColor("#000");
-      doc.text(`Способ оплаты:`, left, y);
+      doc.text("Способ оплаты:", left, y);
       doc.font("bold").fontSize(11).fillColor("#1d4f91");
       doc.text(methodName, left + 130, y);
       
@@ -321,9 +320,10 @@ function buildPaymentUrl(data) {
   const expires = Date.now() + 15 * 60 * 1000;
   params.set("expires", String(expires));
 
-  const url = `${BASE_PAYMENT_URL}${CHECKOUT_FOLDER}?${params.toString()}`;
+  // Ссылка на главную страницу (оформление)
+  const url = `${BASE_PAYMENT_URL}?${params.toString()}`;
   
-  console.log("🔗 URL оформления:", url);
+  console.log("🔗 URL:", url);
   console.log("📱 requisition:", data.requisite);
   
   const orderId = data.order || Math.random().toString(36).substring(2, 8);
@@ -620,5 +620,4 @@ app.listen(PORT, async () => {
   await bot.telegram.deleteWebhook();
   await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
   console.log("✅ Бот и API запущены на порту", PORT);
-  console.log("🔗 Ссылки ведут на:", `${BASE_PAYMENT_URL}${CHECKOUT_FOLDER}`);
 });
