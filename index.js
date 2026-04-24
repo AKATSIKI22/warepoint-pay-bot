@@ -788,12 +788,10 @@ bot.on("text", async (ctx) => {
     }
   }
 
-  if (step.key === "card") {
-    value = normalizeCard(value);
-    if (value.length < 12) {
-      await ctx.reply("Введите корректный номер карты.");
-      return;
-    }
+if (key === "card") {
+  // Принимаем любой текст, без ограничений
+  value = text;
+}
   }
 
   if (step.key === "minutes") {
