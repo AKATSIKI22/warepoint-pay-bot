@@ -5,6 +5,7 @@ const multer = require("multer");
 const cors = require("cors");
 const { Telegraf, Markup } = require("telegraf");
 const PDFDocument = require("pdfkit");
+const fs = require("fs");
 const path = require("path");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -14,7 +15,7 @@ const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onre
 const PORT = Number(process.env.PORT || 3000);
 
 if (!BOT_TOKEN) {
-  console.error("Нет BOT_TOKEN");
+  console.error("❌ Нет BOT_TOKEN!");
   process.exit(1);
 }
 
@@ -34,7 +35,7 @@ const lastOrders = new Map();
 // Папка для PDF
 const RECEIPTS_DIR = path.join(__dirname, "receipts");
 if (!fs.existsSync(RECEIPTS_DIR)) {
-  fs.mkdirSync(RECEIPTS_DIR);
+  fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
 }
 
 // ============ ФУНКЦИИ ============
@@ -93,22 +94,14 @@ async function generateReceiptPDF(orderData) {
     doc.on("data", (chunk) => buffers.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(buffers)));
 
-    // Шрифт
-    doc.fontSize(12);
-
-    // Заголовок
     doc.fontSize(22).text("ПОДТВЕРЖДЕНИЕ ОПЛАТЫ", { align: "center" });
     doc.moveDown(0.5);
     doc.fontSize(14).text(`Заказ #${orderData.order}`, { align: "center" });
     doc.moveDown(1);
-
-    // Линия
     doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
     doc.moveDown(1);
 
-    // Информация
     doc.fontSize(12).text(`Дата: ${getDateTime()}`);
-    doc.moveDown(0.3);
     doc.text(`Статус: ОПЛАЧЕНО`);
     doc.moveDown(1);
 
@@ -145,10 +138,8 @@ async function generateReceiptPDF(orderData) {
       doc.moveDown(1);
     }
 
-    // Линия
     doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#2563eb");
     doc.moveDown(1);
-
     doc.fontSize(10).text("Спасибо за оплату! Заказ принят в обработку.", { align: "center" });
     
     doc.end();
@@ -220,12 +211,12 @@ bot.start(async (ctx) => {
 
 bot.command("new", async (ctx) => {
   sessions.set(ctx.from.id, { step: "order", data: {} });
-  await ctx.reply("Введите номер заказа:");
+  await ctx.reply("📦 Введите номер заказа:");
 });
 
 bot.hears("💳 Новый платеж", async (ctx) => {
   sessions.set(ctx.from.id, { step: "order", data: {} });
-  await ctx.reply("Введите номер заказа:");
+  await ctx.reply("📦 Введите номер заказа:");
 });
 
 bot.hears("📋 Мои ссылки", async (ctx) => {
@@ -268,21 +259,21 @@ bot.on("text", async (ctx) => {
       case "order":
         session.data.order = text;
         session.step = "product";
-        await ctx.reply("Товар:");
+        await ctx.reply("🛍 Товар:");
         break;
 
       case "product":
         session.data.product = text;
         session.step = "amount";
-        await ctx.reply("Сумма (цифры):");
+        await ctx.reply("💰 Сумма (только цифры):");
         break;
 
       case "amount":
         const amt = normalizeDigits(text);
-        if (!amt) return ctx.reply("Только цифры!");
+        if (!amt) return ctx.reply("❌ Только цифры!");
         session.data.amount = amt;
         session.step = "method";
-        await ctx.reply("Способ:", 
+        await ctx.reply("💳 Выберите способ:", 
           Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]]).resize()
         );
         break;
@@ -290,12 +281,12 @@ bot.on("text", async (ctx) => {
       case "method":
         if (text.includes("карт")) {
           session.data.method = "card";
-          await ctx.reply("Номер карты:", Markup.removeKeyboard());
+          await ctx.reply("💳 Номер карты:", Markup.removeKeyboard());
         } else if (text.includes("телефон") || text.includes("номер")) {
           session.data.method = "phone";
-          await ctx.reply("Номер телефона:", Markup.removeKeyboard());
+          await ctx.reply("📱 Номер телефона:", Markup.removeKeyboard());
         } else {
-          return ctx.reply("Выберите:", 
+          return ctx.reply("⚠️ Выберите:", 
             Markup.keyboard([["💳 По карте", "📱 По номеру телефона"]]).resize()
           );
         }
@@ -304,20 +295,20 @@ bot.on("text", async (ctx) => {
 
       case "requisite":
         if (session.data.method === "card") {
-          if (!isValidCard(text)) return ctx.reply("15-19 цифр!");
+          if (!isValidCard(text)) return ctx.reply("❌ 15-19 цифр для карты!");
           session.data.requisite = formatCard(text);
         } else {
-          if (!isValidPhone(text)) return ctx.reply("11 цифр!");
+          if (!isValidPhone(text)) return ctx.reply("❌ 11 цифр для телефона!");
           session.data.requisite = formatPhone(text);
         }
         session.step = "bank";
-        await ctx.reply("Банк:");
+        await ctx.reply("🏦 Банк:");
         break;
 
       case "bank":
         session.data.bank = text;
         session.step = "recipient";
-        await ctx.reply("Получатель:");
+        await ctx.reply("👤 Получатель:");
         break;
 
       case "recipient":
@@ -330,7 +321,15 @@ bot.on("text", async (ctx) => {
         const methodEmoji = session.data.method === "card" ? "💳" : "📱";
         
         await ctx.reply(
-          `✅ Готово!\n📦 ${session.data.order}\n🛍 ${session.data.product}\n💰 ${formatAmount(session.data.amount)}\n${methodEmoji} ${session.data.requisite}\n🔗 ${url}`
+          `✅ *Готово!*\n\n` +
+          `📦 Заказ: \`${session.data.order}\`\n` +
+          `🛍 Товар: \`${session.data.product}\`\n` +
+          `💰 Сумма: *${formatAmount(session.data.amount)}*\n` +
+          `${methodEmoji} Реквизит: \`${session.data.requisite}\`\n` +
+          `🏦 Банк: \`${session.data.bank}\`\n` +
+          `👤 Получатель: \`${session.data.recipient}\`\n\n` +
+          `🔗 \`${url}\``,
+          { parse_mode: "Markdown" }
         );
         
         sessions.delete(ctx.from.id);
@@ -340,6 +339,7 @@ bot.on("text", async (ctx) => {
   } catch (err) {
     console.error("Ошибка:", err);
     sessions.delete(ctx.from.id);
+    ctx.reply("❌ Ошибка. Начните заново: /new");
   }
 });
 
@@ -370,7 +370,7 @@ app.post("/send", upload.single("file"), async (req, res) => {
       return res.json({ ok: false, error: "Заказ не найден" });
     }
 
-    // Данные клиента
+    // Сохраняем данные клиента
     order.customer_name = req.body.customer_name || "";
     order.customer_phone = req.body.customer_phone || "";
     order.customer_email = req.body.customer_email || "";
@@ -384,7 +384,6 @@ app.post("/send", upload.single("file"), async (req, res) => {
     const methodName = order.method === "phone" ? "По номеру телефона" : "На карту";
     const cardMask = order.method === "card" ? `***** ${getLast4(order.requisite)}` : order.requisite;
 
-    // Сообщение в группу
     let message = `💸 *Новое подтверждение оплаты*\n\n`;
     message += `📦 Заказ: ${order.order}\n`;
     message += `🛍 Товар: ${order.product}\n`;
@@ -399,7 +398,6 @@ app.post("/send", upload.single("file"), async (req, res) => {
     
     message += `\n📌 Статус: *Ожидает проверки*`;
 
-    // Отправляем в группу с кнопками
     if (TG_CHAT_ID) {
       await bot.telegram.sendMessage(TG_CHAT_ID, message, {
         parse_mode: "Markdown",
@@ -411,7 +409,6 @@ app.post("/send", upload.single("file"), async (req, res) => {
         ])
       });
 
-      // Отправляем файл чека если есть
       if (req.file) {
         await bot.telegram.sendDocument(TG_CHAT_ID, {
           source: req.file.buffer,
@@ -438,7 +435,6 @@ bot.action(/approve_(.+)/, async (ctx) => {
 
   order.status = "approved";
 
-  // Генерируем PDF
   const pdfBuffer = await generateReceiptPDF(order);
   const pdfPath = path.join(RECEIPTS_DIR, `receipt_${orderId}.pdf`);
   fs.writeFileSync(pdfPath, pdfBuffer);
@@ -457,7 +453,6 @@ bot.action(/approve_(.+)/, async (ctx) => {
     { parse_mode: "Markdown" }
   );
 
-  // Отправляем PDF
   await ctx.replyWithDocument({
     source: pdfBuffer,
     filename: `Подтверждение_оплаты_заказ_${orderId}.pdf`
