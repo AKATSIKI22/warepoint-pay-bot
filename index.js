@@ -94,16 +94,13 @@ function getDateTime() {
   return new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 }
 
-// ============ PDF С ПЕЧАТЬЮ ============
+// ============ PDF КАК НА ПЕРВОМ СКРИНЕ ============
 function generateConfirmationPdfBuffer(meta) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({
-        size: "A4",
-        margin: 28
-      });
-
+      const doc = new PDFDocument({ size: "A4", margin: 30 });
       const chunks = [];
+      
       doc.on("data", (chunk) => chunks.push(chunk));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
@@ -112,118 +109,131 @@ function generateConfirmationPdfBuffer(meta) {
       doc.registerFont("bold", FONT_BOLD);
 
       const pageWidth = doc.page.width;
-      const left = 36;
-      const right = pageWidth - 36;
-      const contentWidth = right - left;
-
-      const order = String(meta.order || "—");
-      const product = String(meta.product || "Товар");
-      const amount = formatAmountPdf(meta.amount || "0");
-      const date = getDateTime();
+      const left = 30;
+      const right = pageWidth - 30;
 
       function hr(y) {
-        doc.moveTo(left, y).lineTo(right, y).stroke();
+        doc.moveTo(left, y).lineTo(right, y).stroke("#000");
       }
 
-      function stars(y) {
-        doc.font("regular").fontSize(9).text("* ".repeat(38), left, y, {
-          width: contentWidth,
+      function lineOfStars(y) {
+        const starLine = "* ".repeat(30);
+        doc.font("regular").fontSize(9).text(starLine, left, y, {
+          width: right - left,
           align: "center"
         });
       }
 
-      // Фон
-      doc.rect(0, 0, pageWidth, doc.page.height).fill("#efefef");
+      const dateTime = getDateTime();
+      const order = String(meta.order || "—");
+      const product = String(meta.product || "Товар");
+      const amount = formatAmountPdf(meta.amount || "0");
+      const cardLast4 = meta.method === "card" ? getLast4(meta.requisite) : "";
+      const phone = meta.method === "phone" ? meta.requisite : "";
 
       let y = 40;
 
-      // Название компании
-      doc.font("bold").fontSize(14).fillColor("#111")
-        .text('ООО "БЕТОН"', left, y);
-
-      y += 25;
-      doc.font("regular").fontSize(8).fillColor("#555");
-      doc.text("ИНН: 9726099596    ОГРН: 1257700249157    КПП: 772601001", left, y);
+      // ШАПКА
+      doc.font("bold").fontSize(12).fillColor("#000");
+      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
+      
+      y += 40;
+      doc.font("regular").fontSize(9);
+      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
+      y += 15;
+      doc.text("ИНН: 9726099596", left, y, { align: "center" });
+      y += 15;
+      doc.text("ОГРН: 1257700249157", left, y, { align: "center" });
+      y += 15;
+      doc.text("КПП: 772601001", left, y, { align: "center" });
 
       y += 30;
       hr(y);
+      
+      y += 20;
+      doc.font("bold").fontSize(11);
+      doc.text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
 
+      y += 25;
+      doc.font("regular").fontSize(10);
+      doc.text(dateTime, left, y, { align: "center" });
+
+      y += 30;
+      doc.font("regular").fontSize(9);
+      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
       y += 15;
-      doc.font("bold").fontSize(11).fillColor("#111")
-        .text("ЧЕК ОПЛАТЫ", left, y);
+      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
+      y += 15;
+      doc.text("ИНН 9726099596", left, y, { align: "center" });
+      y += 15;
+      doc.text("КПП 772601001", left, y, { align: "center" });
 
-      y += 20;
-      doc.font("regular").fontSize(10)
-        .text(date, left, y, { align: "right" });
+      // Международный разрыв
+      y += 40;
+
+      // ТОВАР
+      doc.font("bold").fontSize(22);
+      doc.text("Пила торцовочная аккумуляторная EINHELL TE-SM 36/10 L", left, y, { align: "center" });
+      y += 40;
+      doc.text("1шт", left, y, { align: "center" });
+
+      y += 35;
+      doc.font("bold").fontSize(24);
+      doc.text("28 999,00 ₽", left, y, { align: "center" });
 
       y += 40;
-      doc.text(`Товар: ${product}`, left, y);
-      y += 20;
-      doc.text(`Заказ: №${order}`, left, y);
-      y += 20;
-      doc.text(`Сумма: ${amount}`, left, y);
-      y += 20;
-      
-      // Способ оплаты
-      const methodText = meta.method === "phone" ? "Способ: Перевод по номеру телефона" : "Способ: Перевод на карту";
-      doc.text(methodText, left, y);
-      y += 20;
-      
-      const reqLabel = meta.method === "phone" ? "Номер телефона: " : "Номер карты: ";
-      doc.text(`${reqLabel}${meta.requisite || ""}`, left, y);
-      y += 20;
-      
-      doc.text(`Банк: ${meta.bank || ""}`, left, y);
-      y += 20;
-      doc.text(`Получатель: ${meta.recipient || ""}`, left, y);
+      lineOfStars(y);
 
-      // Данные клиента
-      if (meta.customer_name) {
-        y += 30;
-        hr(y);
-        y += 15;
-        doc.font("bold").fontSize(10).text("Покупатель:", left, y);
-        y += 18;
-        doc.font("regular").fontSize(10);
-        doc.text(`ФИО: ${meta.customer_name}`, left, y);
-        y += 18;
-        doc.text(`Телефон: ${meta.customer_phone}`, left, y);
-        y += 18;
-        doc.text(`Email: ${meta.customer_email}`, left, y);
-      }
-
-      // Доставка
-      if (meta.delivery) {
-        y += 30;
-        hr(y);
-        y += 15;
-        doc.font("bold").fontSize(10).text("Доставка:", left, y);
-        y += 18;
-        doc.font("regular").fontSize(10);
-        doc.text(`${meta.delivery}`, left, y);
-        y += 18;
-        doc.text(`Город: ${meta.city || ""}`, left, y);
-        y += 18;
-        doc.text(`Адрес: ${meta.full_address || ""}`, left, y);
-        if (meta.pickup) {
-          y += 18;
-          doc.text(`ПВЗ: ${meta.pickup}`, left, y);
-        }
-      }
+      y += 35;
+      doc.font("regular").fontSize(14);
+      doc.text("Доставка", left, y, { align: "center" });
+      y += 25;
+      doc.font("bold").fontSize(28);
+      doc.text("0.00", left, y, { align: "center" });
+      y += 30;
+      doc.font("regular").fontSize(16);
+      doc.text("Бесплатно", left, y, { align: "center" });
 
       y += 40;
-      stars(y);
+      doc.font("regular").fontSize(12);
+      doc.text("Безналичный", left, y, { align: "center" });
+      y += 20;
+      doc.font("regular").fontSize(13);
+      doc.text("Платёж через СБП", left, y, { align: "center" });
+
+      y += 40;
+      doc.font("bold").fontSize(24);
+      doc.text("28 999,00 ₽", left, y, { align: "center" });
+      y += 30;
+      doc.font("regular").fontSize(16);
+      doc.text("Сума", left, y, { align: "center" });
+
+      y += 40;
+      lineOfStars(y);
+
+      y += 35;
+      doc.font("regular").fontSize(15);
+      doc.text("С НДС НЕТ", left, y, { align: "center" });
+      y += 25;
+      doc.text("0%", left, y, { align: "center" });
+
+      y += 40;
+      doc.font("bold").fontSize(14);
+      doc.text(`Заказ №${order}`, left, y, { align: "center" });
+
+      y += 40;
+      lineOfStars(y);
 
       // Печать
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          const size = 130;
+          const size = 140;
           const x = pageWidth / 2 - size / 2;
-          const yStamp = y + 20;
+          const yStamp = y + 25;
 
           doc.save();
-          doc.opacity(0.85);
-          doc.rotate(-10, {
+          doc.opacity(0.80);
+          doc.rotate(-12, {
             origin: [x + size / 2, yStamp + size / 2]
           });
           doc.image(STAMP_PATH, x, yStamp, {
@@ -274,9 +284,9 @@ function buildPaymentUrl(data) {
   params.set("product", data.product || "");
   params.set("amount", data.amount || "");
   params.set("method", data.method || "card");
-  params.set("requisite", data.requisite || "");
   params.set("bank", data.bank || "");
   params.set("recipient", data.recipient || "");
+  params.set("requisite", data.requisite || "");
 
   if (data.method === "card") {
     params.set("card", data.requisite || "");
@@ -345,7 +355,6 @@ bot.hears("❌ Отмена", async (ctx) => {
   await ctx.reply("❌ Отменено.");
 });
 
-// Обработка текста
 bot.on("text", async (ctx) => {
   const session = sessions.get(ctx.from.id);
   if (!session) return;
@@ -506,14 +515,11 @@ app.post("/send", upload.single("file"), async (req, res) => {
         ])
       });
 
-      // Отправляем файл чека клиента
       if (req.file && req.file.buffer && req.file.size > 0) {
-        console.log("📎 Отправляю чек клиента:", req.file.originalname);
         await bot.telegram.sendDocument(TG_CHAT_ID, {
           source: req.file.buffer,
           filename: req.file.originalname
         });
-        console.log("✅ Чек клиента отправлен");
       }
     }
 
