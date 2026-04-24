@@ -13,7 +13,7 @@ const TG_CHAT_ID = process.env.TG_CHAT_ID;
 const BASE_PAYMENT_URL = process.env.BASE_PAYMENT_URL || "https://warepointpay.ru";
 const APP_BASE_URL = process.env.APP_BASE_URL || "https://warepoint-pay-bot.onrender.com";
 const PORT = Number(process.env.PORT || 3000);
-const SITE_FOLDER = "/3052099/";
+const CHECKOUT_FOLDER = "/checkout/";
 
 if (!BOT_TOKEN) {
   console.error("❌ Нет BOT_TOKEN!");
@@ -95,11 +95,11 @@ function getDateTime() {
   return new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 }
 
-// ============ PDF КАК НА ПЕРВОМ СКРИНЕ ============
+// ============ КРАСИВЫЙ PDF ============
 function generateConfirmationPdfBuffer(meta) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: "A4", margin: 30 });
+      const doc = new PDFDocument({ size: "A4", margin: 25 });
       const chunks = [];
       
       doc.on("data", (chunk) => chunks.push(chunk));
@@ -110,137 +110,162 @@ function generateConfirmationPdfBuffer(meta) {
       doc.registerFont("bold", FONT_BOLD);
 
       const pageWidth = doc.page.width;
-      const left = 30;
-      const right = pageWidth - 30;
-
-      function hr(y) {
-        doc.moveTo(left, y).lineTo(right, y).stroke("#000");
-      }
-
-      function lineOfStars(y) {
-        doc.font("regular").fontSize(8);
-        const starLine = "* ".repeat(35);
-        doc.text(starLine, left, y, { align: "center" });
-      }
+      const left = 25;
+      const right = pageWidth - 25;
 
       const dateTime = getDateTime();
       const order = String(meta.order || "—");
       const product = String(meta.product || "Товар");
       const amount = formatAmountPdf(meta.amount || "0");
+      const methodName = meta.method === "phone" ? "По номеру телефона" : "На карту";
+      const requisiteLabel = meta.method === "phone" ? "Номер телефона" : "Номер карты";
+      const requisite = meta.requisite || "—";
+      const bank = meta.bank || "—";
+      const recipient = meta.recipient || "—";
 
-      let y = 30;
+      let y = 20;
 
-      // ШАПКА
-      doc.font("bold").fontSize(11).fillColor("#000");
-      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
+      // Верхняя линия
+      doc.moveTo(left, y).lineTo(right, y).stroke("#1d4f91");
+      y += 15;
+
+      // Название компании
+      doc.font("bold").fontSize(16).fillColor("#1d4f91");
+      doc.text('ООО "БЕТОН"', left, y, { align: "center" });
       
-      y += 30;
-      doc.font("regular").fontSize(8);
-      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 13;
-      doc.text("ИНН: 9726099596", left, y, { align: "center" });
-      y += 13;
-      doc.text("ОГРН: 1257700249157", left, y, { align: "center" });
-      y += 13;
-      doc.text("КПП: 772601001", left, y, { align: "center" });
-
       y += 25;
-      hr(y);
+      doc.font("regular").fontSize(8).fillColor("#666");
+      doc.text("ИНН 9726099596  •  ОГРН 1257700249157  •  КПП 772601001", left, y, { align: "center" });
+      
+      y += 20;
+      doc.moveTo(left, y).lineTo(right, y).stroke("#e5e7eb");
       
       y += 15;
-      doc.font("bold").fontSize(10);
-      doc.text('Чек- ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-
-      y += 20;
-      doc.font("regular").fontSize(9);
+      doc.font("bold").fontSize(18).fillColor("#1d4f91");
+      doc.text("ЧЕК ОПЛАТЫ", left, y, { align: "center" });
+      
+      y += 25;
+      doc.font("regular").fontSize(10).fillColor("#666");
       doc.text(dateTime, left, y, { align: "center" });
+      doc.text(`Заказ №${order}`, left, y + 15, { align: "center" });
 
+      y += 45;
+      doc.moveTo(left, y).lineTo(right, y).stroke("#2563eb");
+      y += 20;
+
+      // Товар
+      doc.font("bold").fontSize(14).fillColor("#1d4f91");
+      doc.text("ТОВАР:", left, y);
+      y += 8;
+      doc.font("bold").fontSize(16).fillColor("#000");
+      doc.text(product, left, y);
+      
+      y += 8;
+      doc.font("regular").fontSize(11).fillColor("#666");
+      doc.text("Количество: 1 шт.", left, y);
+
+      y += 30;
+
+      // Сумма
+      doc.font("bold").fontSize(28).fillColor("#16a34a");
+      doc.text(amount, left, y, { align: "right" });
+      
+      y += 40;
+
+      // Разделитель
+      doc.font("regular").fontSize(8).fillColor("#999");
+      doc.text("•  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •", left, y, { align: "center" });
+      
       y += 25;
-      doc.font("regular").fontSize(8);
-      doc.text('ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "БЕТОН"', left, y, { align: "center" });
-      y += 13;
-      doc.text('Сокращенное наименование: ООО "БЕТОН"', left, y, { align: "center" });
-      y += 13;
-      doc.text("ИНН 9726099596", left, y, { align: "center" });
-      y += 13;
-      doc.text("КПП 772601001", left, y, { align: "center" });
 
-      y += 35;
+      // Реквизиты
+      doc.font("bold").fontSize(12).fillColor("#1d4f91");
+      doc.text("РЕКВИЗИТЫ ДЛЯ ОПЛАТЫ:", left, y);
+      y += 20;
 
-      // ТОВАР (реальные данные)
-      doc.font("bold").fontSize(16);
-      doc.text(product, left, y, { align: "center" });
-      y += 30;
-      doc.font("bold").fontSize(18);
-      doc.text("1шт", left, y, { align: "center" });
-
-      y += 30;
-      doc.font("bold").fontSize(22);
-      doc.text(amount, left, y, { align: "center" });
-
-      y += 35;
-      lineOfStars(y);
-
-      y += 30;
-      doc.font("regular").fontSize(12);
-      doc.text("Доставка", left, y, { align: "center" });
-      y += 22;
-      doc.font("bold").fontSize(26);
-      doc.text("0.00", left, y, { align: "center" });
-      y += 25;
-      doc.font("regular").fontSize(14);
-      doc.text("Бесплатно", left, y, { align: "center" });
-
-      y += 35;
-      doc.font("regular").fontSize(11);
-      doc.text("Безналичный", left, y, { align: "center" });
+      doc.font("regular").fontSize(11).fillColor("#000");
+      doc.text(`Способ оплаты:`, left, y);
+      doc.font("bold").fontSize(11).fillColor("#1d4f91");
+      doc.text(methodName, left + 130, y);
+      
       y += 18;
-      doc.font("regular").fontSize(12);
-      doc.text("Платёж через СБП", left, y, { align: "center" });
+
+      doc.font("regular").fontSize(11).fillColor("#000");
+      doc.text(`${requisiteLabel}:`, left, y);
+      doc.font("bold").fontSize(11).fillColor("#000");
+      doc.text(requisite, left + 130, y);
+      
+      y += 18;
+
+      doc.font("regular").fontSize(11).fillColor("#000");
+      doc.text("Банк:", left, y);
+      doc.font("bold").fontSize(11).fillColor("#000");
+      doc.text(bank, left + 130, y);
+      
+      y += 18;
+
+      doc.font("regular").fontSize(11).fillColor("#000");
+      doc.text("Получатель:", left, y);
+      doc.font("bold").fontSize(11).fillColor("#000");
+      doc.text(recipient, left + 130, y);
 
       y += 35;
-      doc.font("bold").fontSize(22);
-      doc.text(amount, left, y, { align: "center" });
+
+      // Разделитель
+      doc.font("regular").fontSize(8).fillColor("#999");
+      doc.text("•  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •  •", left, y, { align: "center" });
+      
       y += 25;
-      doc.font("regular").fontSize(14);
-      doc.text("Сума", left, y, { align: "center" });
 
-      y += 35;
-      lineOfStars(y);
-
+      // Статус
+      doc.font("bold").fontSize(14).fillColor("#16a34a");
+      doc.text("✅ ОПЛАЧЕНО", left, y, { align: "center" });
+      
       y += 30;
-      doc.font("regular").fontSize(14);
-      doc.text("С НДС НЕТ", left, y, { align: "center" });
-      y += 22;
-      doc.text("0%", left, y, { align: "center" });
 
-      y += 35;
-      doc.font("bold").fontSize(14);
-      doc.text(`Заказ №${order}`, left, y, { align: "center" });
+      // Итого
+      doc.font("bold").fontSize(14).fillColor("#000");
+      doc.text(`ИТОГО: ${amount}`, left, y, { align: "right" });
+      
+      y += 15;
+      doc.font("regular").fontSize(9).fillColor("#999");
+      doc.text("Без НДС", left, y, { align: "right" });
 
-      y += 35;
-      lineOfStars(y);
+      y += 40;
 
-      // Печать
+      // Нижняя линия
+      doc.moveTo(left, y).lineTo(right, y).stroke("#e5e7eb");
+      y += 15;
+
+      // Печать и подпись
       if (fs.existsSync(STAMP_PATH)) {
         try {
-          const size = 140;
-          const x = pageWidth / 2 - size / 2;
-          const yStamp = y + 20;
-
+          doc.font("regular").fontSize(8).fillColor("#999");
+          doc.text("_________________________", left + 20, y + 30);
+          doc.text("Подпись / М.П.", left + 20, y + 45);
+          
+          const stampSize = 120;
           doc.save();
-          doc.opacity(0.80);
-          doc.rotate(-12, {
-            origin: [x + size / 2, yStamp + size / 2]
+          doc.opacity(0.85);
+          doc.rotate(-15, {
+            origin: [right - 70, y + stampSize / 2]
           });
-          doc.image(STAMP_PATH, x, yStamp, {
-            fit: [size, size]
+          doc.image(STAMP_PATH, right - 130, y, {
+            fit: [stampSize, stampSize]
           });
           doc.restore();
         } catch (e) {
           console.error("Ошибка печати:", e);
         }
       }
+
+      y += 150;
+
+      // Подвал
+      doc.font("regular").fontSize(7).fillColor("#999");
+      doc.text('ООО "БЕТОН" • ИНН 9726099596 • ОГРН 1257700249157 • КПП 772601001', left, y, { align: "center" });
+      y += 12;
+      doc.text("Чек сформирован автоматически", left, y, { align: "center" });
 
       doc.end();
     } catch (err) {
@@ -274,7 +299,6 @@ function showMainMenu(ctx) {
   return ctx.reply("👇 Выберите действие:", Markup.keyboard(MAIN_MENU).resize());
 }
 
-// 👇 ИСПРАВЛЕННАЯ buildPaymentUrl — передаёт ВСЕ параметры
 function buildPaymentUrl(data) {
   const params = new URLSearchParams();
   
@@ -297,11 +321,10 @@ function buildPaymentUrl(data) {
   const expires = Date.now() + 15 * 60 * 1000;
   params.set("expires", String(expires));
 
-  const url = `${BASE_PAYMENT_URL}${SITE_FOLDER}?${params.toString()}`;
+  const url = `${BASE_PAYMENT_URL}${CHECKOUT_FOLDER}?${params.toString()}`;
   
-  console.log("🔗 URL:", url);
+  console.log("🔗 URL оформления:", url);
   console.log("📱 requisition:", data.requisite);
-  console.log("📱 method:", data.method);
   
   const orderId = data.order || Math.random().toString(36).substring(2, 8);
   orders.set(orderId, { ...data, id: orderId, status: "pending", createdAt: Date.now() });
@@ -597,4 +620,5 @@ app.listen(PORT, async () => {
   await bot.telegram.deleteWebhook();
   await bot.telegram.setWebhook(`${APP_BASE_URL}/bot`);
   console.log("✅ Бот и API запущены на порту", PORT);
+  console.log("🔗 Ссылки ведут на:", `${BASE_PAYMENT_URL}${CHECKOUT_FOLDER}`);
 });
