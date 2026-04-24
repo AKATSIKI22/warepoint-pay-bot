@@ -790,7 +790,7 @@ bot.on("text", async (ctx) => {
 
   if (step.key === "card") {
     value = normalizeCard(value);
-    if (value.length < 12) {
+    if (value.length < ) {
       await ctx.reply("Введите корректный номер карты.");
       return;
     }
