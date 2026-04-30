@@ -59,7 +59,11 @@ const STEPS = [
   { key: "order", label: "Введите номер заказа", example: "Например: 5555" },
   { key: "product", label: "Введите название товара", example: "Например: ASUS GeForce RTX 5060 Ti 16GB DUAL OC" },
   { key: "amount", label: "Введите сумму к оплате", example: "Например: 95400" },
-  { key: "card", label: "Введите номер карты", example: "Например: 5555555555555555" },
+  { 
+  key: "card", 
+  label: "Введите реквизиты для оплаты", 
+  example: "Например: номер карты, телефон или другие реквизиты" 
+},
   { key: "bank", label: "Введите название банка", example: "Например: Озон-Банк" },
   { key: "recipient", label: "Введите ФИО получателя", example: "Например: Иван Иванов" },
   { key: "minutes", label: "Введите время таймера в минутах", example: "Например: 15" }
@@ -93,7 +97,7 @@ function normalizeAmount(value) {
 }
 
 function normalizeCard(value) {
-  return String(value || "").replace(/[^\d]/g, "");
+  return String(value || "").trim();
 }
 
 function normalizeMinutes(value) {
@@ -788,13 +792,14 @@ bot.on("text", async (ctx) => {
     }
   }
 
-  if (step.key === "card") {
-    value = normalizeCard(value);
-    if (value.length < 12) {
-      await ctx.reply("Введите корректный номер карты.");
-      return;
-    }
+ if (step.key === "card") {
+  value = normalizeCard(value);
+
+  if (!value) {
+    await ctx.reply("Введите реквизиты для оплаты.");
+    return;
   }
+}
 
   if (step.key === "minutes") {
     value = normalizeMinutes(value);
